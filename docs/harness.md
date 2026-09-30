@@ -1,0 +1,532 @@
+# Test Harness
+
+## 1. Purpose
+
+The test harness is a first-class part of the Multi-Cloud Cost Platform.
+
+Eight CSP integrations create significant maintenance risk if correctness depends on manual tests against live accounts.
+
+The harness must allow developers and CI to verify:
+
+```text
+provider behavior
+normalization behavior
+budget/anomaly behavior
+Kubernetes control-plane behavior
+Vault/ESO secret flow
+failure behavior
+```
+
+without requiring live cloud access for normal development.
+
+---
+
+## 2. Harness layers
+
+Required layers:
+
+```text
+1. Provider Fixture Harness
+2. Provider Contract Tests
+3. Normalizer Golden Tests
+4. Analyzer Tests
+5. Integration Tests
+6. Kubernetes E2E
+7. Failure Injection
+```
+
+These layers serve different purposes and must not be collapsed into one large E2E suite.
+
+---
+
+## 3. Provider fixture harness
+
+Each CSP must have sanitized representative API/export responses.
+
+Suggested layout:
+
+```text
+testdata/
+├── aws/
+│   ├── normal.json
+│   ├── empty.json
+│   ├── pagination-page-1.json
+│   ├── pagination-page-2.json
+│   ├── credit.json
+│   ├── discount.json
+│   ├── malformed.json
+│   ├── auth-error.json
+│   └── rate-limit.json
+├── azure/
+├── gcp/
+├── oci/
+├── ibm/
+├── ncp/
+├── nhn/
+└── alibaba/
+```
+
+Never store:
+
+- real credentials
+- real tokens
+- unnecessary customer data
+- sensitive account metadata
+- unredacted production payloads
+
+The fixture transport should emulate provider behavior where practical.
+
+A developer should be able to run something conceptually like:
+
+```bash
+cost-collector \
+  --provider=ncp \
+  --fixture=testdata/ncp/normal.json
+```
+
+or equivalent test-only wiring.
+
+---
+
+## 4. Provider contract tests
+
+Every provider must pass the same behavioral contract.
+
+Required cases:
+
+```text
+successful collection
+empty result
+pagination
+authentication failure
+permission denied
+rate limiting
+timeout
+malformed response
+credit
+discount
+currency handling
+duplicate source records
+partial response
+```
+
+Conceptual Go pattern:
+
+```go
+func ProviderContractTest(
+    t *testing.T,
+    provider Provider,
+) {
+    t.Run("collect normal cost", ...)
+    t.Run("empty result", ...)
+    t.Run("pagination", ...)
+    t.Run("authentication failure", ...)
+    t.Run("rate limit", ...)
+    t.Run("timeout", ...)
+}
+```
+
+Each provider invokes the common suite.
+
+```go
+func TestAWSProvider(t *testing.T) {
+    ProviderContractTest(t, newAWSFixtureProvider())
+}
+
+func TestNCPProvider(t *testing.T) {
+    ProviderContractTest(t, newNCPFixtureProvider())
+}
+```
+
+A provider is not complete because its happy path works.
+
+---
+
+## 5. Normalizer golden tests
+
+Normalization should be deterministic.
+
+Pattern:
+
+```text
+provider input fixture
+       ↓
+provider adapter
+       ↓
+normalizer
+       ↓
+expected golden output
+```
+
+Example layout:
+
+```text
+testdata/ncp/
+├── raw-normal.json
+└── expected-normalized.json
+```
+
+Tests compare normalized output against the expected golden file.
+
+Golden tests are especially useful for:
+
+- provider schema changes
+- service-name mappings
+- currency mappings
+- credit/discount behavior
+- tags/labels
+- billing account identifiers
+
+A normalization change must update tests intentionally.
+
+---
+
+## 6. Analyzer tests
+
+Analyzer tests must operate entirely on normalized data.
+
+Do not call live provider APIs.
+
+Required scenarios:
+
+```text
+normal daily cost
+relative-only increase
+absolute-only increase
+true anomaly
+80% budget
+90% budget
+100% budget
+forecast exceed
+no forecast exceed
+stale source data
+collector failed
+```
+
+Example anomaly expectation:
+
+```text
+today > avg_7d * 1.5
+AND
+today - avg_7d > configured_absolute_threshold
+```
+
+Tests should verify notification intent, not Teams delivery.
+
+---
+
+## 7. Notifier test harness
+
+Notifier must be abstracted.
+
+Required implementations:
+
+```text
+TeamsNotifier
+FakeNotifier
+StdoutNotifier
+```
+
+The default test path uses `FakeNotifier`.
+
+Example conceptual payload:
+
+```json
+{
+  "severity": "warning",
+  "type": "BudgetThreshold",
+  "provider": "aws",
+  "currentCost": 8420000,
+  "budget": 10000000
+}
+```
+
+Unit and analyzer tests must not send real Teams messages.
+
+A Teams integration test may target a disposable fake HTTP endpoint or dedicated test flow.
+
+---
+
+## 8. Integration harness
+
+Integration tests verify multiple application layers together without requiring a full Kubernetes cluster.
+
+Suggested targets:
+
+```text
+fixture provider
+   ↓
+adapter
+   ↓
+normalizer
+   ↓
+test ClickHouse
+   ↓
+analyzer
+   ↓
+FakeNotifier
+```
+
+Recommended assertions:
+
+- correct record count
+- idempotent re-ingestion
+- correct aggregation
+- expected policy result
+- expected notification payload
+- safe failure on malformed records
+
+---
+
+## 9. Kubernetes E2E
+
+Use a disposable Kubernetes cluster such as `kind`.
+
+Target flow:
+
+```text
+create kind cluster
+       │
+       ▼
+install CRDs
+       │
+       ▼
+install Operator
+       │
+       ▼
+install test Vault
+       │
+       ▼
+install ESO
+       │
+       ▼
+seed Vault
+       │
+       ▼
+create ExternalSecret
+       │
+       ▼
+create CloudAccount
+       │
+       ▼
+Operator reconcile
+       │
+       ▼
+Collector CronJob / Job
+       │
+       ▼
+fixture / fake provider
+       │
+       ▼
+ClickHouse
+       │
+       ▼
+Analyzer
+       │
+       ▼
+Fake Teams endpoint
+       │
+       ▼
+assert expected state
+```
+
+The E2E suite must exercise the actual production-style secret path:
+
+```text
+Vault -> ESO -> Kubernetes Secret -> workload
+```
+
+Do not replace this path with a manually created Secret when the test is meant to verify secret integration.
+
+---
+
+## 10. Failure injection
+
+The harness should make failures easy to reproduce.
+
+Required scenarios include:
+
+```text
+Vault unavailable
+ExternalSecret not Ready
+Kubernetes Secret missing
+CSP API 401
+CSP API 403
+CSP API 429
+CSP timeout
+provider malformed payload
+ClickHouse unavailable
+duplicate billing window
+Teams endpoint 5xx
+stale provider data
+```
+
+Desired developer UX:
+
+```bash
+make test-scenario SCENARIO=aws-rate-limit
+make test-scenario SCENARIO=vault-secret-missing
+make test-scenario SCENARIO=clickhouse-down
+make test-scenario SCENARIO=teams-500
+```
+
+Failure behavior should be observable through:
+
+```text
+CR status
+logs
+metrics
+test assertions
+```
+
+---
+
+## 11. Expected status behavior
+
+Examples:
+
+### Missing Secret
+
+```yaml
+status:
+  conditions:
+    - type: CredentialsReady
+      status: "False"
+      reason: SecretNotFound
+
+    - type: CollectorReady
+      status: "False"
+```
+
+### CSP rate limit
+
+```yaml
+status:
+  conditions:
+    - type: CollectionReady
+      status: "False"
+      reason: ProviderRateLimited
+```
+
+### Stale billing data
+
+```yaml
+status:
+  conditions:
+    - type: CollectionReady
+      status: "True"
+
+    - type: DataFresh
+      status: "False"
+      reason: ProviderDataStale
+```
+
+Collection success and data freshness must not be conflated.
+
+---
+
+## 12. CI quality gates
+
+Recommended CI sequence:
+
+```text
+1. format / lint
+2. unit tests
+3. provider contract tests
+4. normalizer golden tests
+5. analyzer tests
+6. build binaries
+7. build container images
+8. create kind cluster
+9. deploy test Vault
+10. deploy ESO
+11. deploy CRDs + Operator
+12. run E2E
+13. run selected failure scenarios
+14. publish images
+15. update GitOps artifact only when explicitly intended
+```
+
+A provider change must not bypass contract tests.
+
+A normalization change must not bypass golden tests.
+
+A CRD change must consider API compatibility and future versioning.
+
+---
+
+## 13. Local developer commands
+
+Recommended targets:
+
+```text
+make test
+make test-contract
+make test-golden
+make test-analyzer
+make test-integration
+make e2e
+make test-scenario SCENARIO=<name>
+```
+
+Provider-specific helpers are acceptable:
+
+```text
+make test-provider PROVIDER=aws
+make test-provider PROVIDER=ncp
+```
+
+Avoid requiring developers to remember long command sequences.
+
+---
+
+## 14. Definition of Done for Phase 1 harness
+
+```text
+[ ] Provider fixture framework exists
+[ ] Common provider contract suite exists
+[ ] AWS contract tests pass
+[ ] GCP contract tests pass
+[ ] Azure contract tests pass
+[ ] Golden normalization tests exist
+[ ] Analyzer tests exist
+[ ] FakeNotifier exists
+[ ] ClickHouse integration test exists
+[ ] kind E2E exists
+[ ] Vault test instance is used in E2E
+[ ] ESO is used in E2E
+[ ] ExternalSecret -> K8s Secret flow is asserted
+[ ] Operator reconciliation is asserted
+[ ] Collector Job/CronJob creation is asserted
+[ ] idempotent re-ingestion is asserted
+[ ] at least one provider failure is injected
+[ ] ClickHouse failure is injected
+[ ] Teams failure is injected
+[ ] stale-data condition is tested
+```
+
+---
+
+## 15. Harness principle
+
+The most important rule:
+
+> A new CSP should be testable before it is trusted in production.
+
+The desired implementation pattern is:
+
+```text
+new provider
+   ↓
+fixtures
+   ↓
+contract suite
+   ↓
+golden normalization
+   ↓
+integration
+   ↓
+E2E
+```
+
+If a provider can only be tested against a live production account, the harness is incomplete.
