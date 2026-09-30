@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-context=kind-louder-e2e
+context="kind-${KIND_CLUSTER_NAME:-louder-e2e}"
 namespace=cloud-cost
 
 if red_output=$(bash scripts/kind/assert-vault-unavailable.sh 2>&1); then
@@ -87,11 +87,11 @@ kubectl --context "$context" wait \
 recovered_access_key_id=$(kubectl --context "$context" get \
   --namespace "$namespace" \
   secret/aws-kind-e2e-outage-credentials \
-  -o jsonpath='{.data.access-key-id}')
+  -o jsonpath='{.data.AWS_ACCESS_KEY_ID}')
 recovered_secret_access_key=$(kubectl --context "$context" get \
   --namespace "$namespace" \
   secret/aws-kind-e2e-outage-credentials \
-  -o jsonpath='{.data.secret-access-key}')
+  -o jsonpath='{.data.AWS_SECRET_ACCESS_KEY}')
 if [[ -z "$recovered_access_key_id" || -z "$recovered_secret_access_key" ]]; then
   printf 'ExternalSecret did not restore both credential keys after Vault recovery\n' >&2
   exit 1

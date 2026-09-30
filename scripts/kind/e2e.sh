@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cluster_name=louder-e2e
+cluster_name="${KIND_CLUSTER_NAME:-louder-e2e}"
 context="kind-$cluster_name"
+export KIND_CLUSTER_NAME="$cluster_name"
 image=louder-operator:local
 mode="${1:-smoke}"
 

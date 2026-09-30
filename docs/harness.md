@@ -320,7 +320,9 @@ embedded fixture Collector
 assert JSON Lines output
 ```
 
-The current Collector executable is a fixture runner for AWS, GCP, and Azure. Synthetic fixture execution is opt-in through the Operator's `--collector-fixture-mode` flag; it is enabled only by the local kind configuration. It proves scheduling, credential Secret reference wiring, image startup, and output encoding only. Without fixture mode the Collector fails explicitly because live provider API adapters are not implemented. Provider API adapters, normalization, ClickHouse ingestion, Analyzer, and Notifier are not yet exercised by this local flow.
+The Collector has an AWS Cost Explorer adapter for daily account-level `UnblendedCost` totals. Its unit and provider contract tests use a synthetic SDK client; the local kind flow stays offline and runs embedded fixtures for AWS, GCP, and Azure. The current kind flow proves scheduling, credential Secret reference wiring, image startup, and output encoding only. Normalization, ClickHouse ingestion, Analyzer, and Notifier are not yet exercised by this local flow.
+
+The kind E2E scripts default to cluster name `louder-e2e`. Set `KIND_CLUSTER_NAME` to run against a separate disposable cluster, for example `KIND_CLUSTER_NAME=louder-e2e-local make kind-e2e`. A cluster that already has the selected name is never replaced.
 
 The local targets cover distinct slices:
 
