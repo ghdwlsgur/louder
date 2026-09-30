@@ -1,6 +1,6 @@
 # Phase 1 · LV6 — Vault and ESO kind E2E
 
-> Status: active (2026-09-30)
+> Status: completed (2026-09-30)
 > Scope: Extend local kind verification to exercise Vault -> External Secrets Operator -> Kubernetes Secret -> CloudAccount status.
 
 ## Goal
@@ -47,7 +47,7 @@ Add a repeatable local test that stores runtime-generated synthetic values in a 
 - [x] Add the `make kind-e2e-secrets` target while retaining `make kind-e2e` as the fast control-plane smoke test.
 - [x] Document the full path, local prerequisites, and test-only Vault limitation.
 - [x] Run the red/green assertion, full secret-flow target, Go tests, manifest checks, shell syntax, and docs-language checks.
-- [ ] Record PR link, CI/merge outcome, and final verification here before moving this file to `completed`.
+- [x] Record PR link, CI/merge outcome, and final verification here before moving this file to `completed`.
 
 ## Acceptance criteria
 
@@ -82,4 +82,5 @@ Add a repeatable local test that stores runtime-generated synthetic values in a 
 - `GOCACHE=/tmp/louder-go-build make manifests` — passed.
 - `make fmt-check`, `bash -n scripts/kind/*.sh`, and `git diff --check` — passed.
 - An initial Vault rollout failed because kubelet could not verify the image's named `vault` user as non-root. Setting the image UID/GID explicitly (`100:1000`) resolved it. Failure diagnostics intentionally omit Vault container logs so runtime token material cannot be printed.
-- Pull request and merge are pending: `gh auth status` reports the configured GitHub token is invalid. The branch will be pushed; PR creation/merge require GitHub CLI authentication to be restored.
+- Implementation PR: [#1 Add Vault ESO kind secret flow E2E](https://github.com/ghdwlsgur/louder/pull/1) — merged into `main` at `a3edf43db2c632f268e82a7e9136c1e8a8d68d81` on 2026-09-30.
+- PR check rollup was empty; all listed verification ran locally before PR creation. The PR was merged with the regular merge method and no administrative bypass.
