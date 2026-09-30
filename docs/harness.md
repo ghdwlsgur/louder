@@ -110,35 +110,27 @@ duplicate source records
 partial response
 ```
 
-Conceptual Go pattern:
+Reusable Go helper:
 
 ```go
-func ProviderContractTest(
-    t *testing.T,
-    provider Provider,
-) {
-    t.Run("collect normal cost", ...)
-    t.Run("empty result", ...)
-    t.Run("pagination", ...)
-    t.Run("authentication failure", ...)
-    t.Run("rate limit", ...)
-    t.Run("timeout", ...)
-}
+contracttest.Run(t, contracttest.Suite{
+    Credentials: []contracttest.CredentialScenario{
+        {Name: "valid credentials", Provider: newAWSFixtureProvider()},
+    },
+    Collections: []contracttest.CollectionScenario{
+        {
+            Name: "complete logical result",
+            Provider: newAWSFixtureProvider(),
+            Request: request,
+            WantRecords: expectedRecords,
+        },
+    },
+})
 ```
 
-Each provider invokes the common suite.
+The shared helper runs every credential and collection scenario through the public `Provider` interface, compares exact returned records, and checks stable error classes. Both scenario types can provide a canceled or deadline context to exercise timeout behavior. Adapter packages provide their fixture or fake-upstream scenarios, including the complete expected result for a paginated logical window.
 
-```go
-func TestAWSProvider(t *testing.T) {
-    ProviderContractTest(t, newAWSFixtureProvider())
-}
-
-func TestNCPProvider(t *testing.T) {
-    ProviderContractTest(t, newNCPFixtureProvider())
-}
-```
-
-A provider is not complete because its happy path works.
+A provider is not complete because its happy path works. Adapter packages remain responsible for cases covering pagination, authentication, permissions, rate limits, timeouts, malformed responses, discounts, credits, currencies, duplicate records, and partial responses. The helper checks expected results and error classes but does not invent provider-specific fixture behavior.
 
 ---
 
