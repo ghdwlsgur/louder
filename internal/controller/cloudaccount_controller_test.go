@@ -63,6 +63,10 @@ func TestReconcileReportsMissingCredentialSecret(t *testing.T) {
 	if condition.Status != metav1.ConditionFalse || condition.Reason != "SecretNotFound" {
 		t.Fatalf("CredentialsReady = (%s, %s), want (False, SecretNotFound)", condition.Status, condition.Reason)
 	}
+	collectorCondition := apiMeta.FindStatusCondition(actual.Status.Conditions, "CollectorReady")
+	if collectorCondition == nil || collectorCondition.Status != metav1.ConditionFalse || collectorCondition.Reason != "SecretNotFound" {
+		t.Fatalf("CollectorReady = %#v, want False/SecretNotFound", collectorCondition)
+	}
 }
 
 func TestReconcileCreatesCollectorCronJob(t *testing.T) {
@@ -141,6 +145,39 @@ func TestReconcileCreatesCollectorCronJob(t *testing.T) {
 	}
 }
 
+func TestReconcileReportsCollectorReady(t *testing.T) {
+	scheme := runtime.NewScheme()
+	for _, addToScheme := range []func(*runtime.Scheme) error{corev1.AddToScheme, batchv1.AddToScheme, v1alpha1.AddToScheme} {
+		if err := addToScheme(scheme); err != nil {
+			t.Fatal(err)
+		}
+	}
+	account := &v1alpha1.CloudAccount{
+		ObjectMeta: metav1.ObjectMeta{Name: "aws-ready", Namespace: "costs", UID: types.UID("account-uid")},
+		Spec: v1alpha1.CloudAccountSpec{
+			Provider:      "aws",
+			AccountID:     "synthetic-account-id",
+			CredentialRef: corev1.LocalObjectReference{Name: "aws-ready-credentials"},
+			Collection:    v1alpha1.CollectionSpec{Enabled: true, Schedule: "0 */6 * * *"},
+		},
+	}
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: account.Spec.CredentialRef.Name, Namespace: account.Namespace}}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(account).WithObjects(account, secret).Build()
+	r := &CloudAccountReconciler{Client: c, CollectorImage: "louder:local", Scheme: scheme}
+	if _, err := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: account.Namespace, Name: account.Name}}); err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+
+	var actual v1alpha1.CloudAccount
+	if err := c.Get(context.Background(), types.NamespacedName{Namespace: account.Namespace, Name: account.Name}, &actual); err != nil {
+		t.Fatal(err)
+	}
+	condition := apiMeta.FindStatusCondition(actual.Status.Conditions, "CollectorReady")
+	if condition == nil || condition.Status != metav1.ConditionTrue || condition.Reason != "CronJobReady" {
+		t.Fatalf("CollectorReady = %#v, want True/CronJobReady", condition)
+	}
+}
+
 func TestReconcileRemovesCollectorCronJobWhenCollectionDisabled(t *testing.T) {
 	scheme := runtime.NewScheme()
 	for _, addToScheme := range []func(*runtime.Scheme) error{corev1.AddToScheme, batchv1.AddToScheme, v1alpha1.AddToScheme} {
@@ -172,6 +209,14 @@ func TestReconcileRemovesCollectorCronJobWhenCollectionDisabled(t *testing.T) {
 	err := c.Get(context.Background(), types.NamespacedName{Namespace: "costs", Name: "aws-prod-collector"}, &actual)
 	if err == nil {
 		t.Fatal("Collector CronJob still exists while collection is disabled")
+	}
+	var actualAccount v1alpha1.CloudAccount
+	if err := c.Get(context.Background(), types.NamespacedName{Namespace: "costs", Name: "aws-prod"}, &actualAccount); err != nil {
+		t.Fatal(err)
+	}
+	condition := apiMeta.FindStatusCondition(actualAccount.Status.Conditions, "CollectorReady")
+	if condition == nil || condition.Status != metav1.ConditionFalse || condition.Reason != "CollectionDisabled" {
+		t.Fatalf("CollectorReady = %#v, want False/CollectionDisabled", condition)
 	}
 }
 
@@ -206,6 +251,20 @@ func TestReconcileDoesNotAdoptUnownedCollectorCronJob(t *testing.T) {
 	}
 	if len(actual.OwnerReferences) != 0 {
 		t.Errorf("unowned CronJob gained owner references: %#v", actual.OwnerReferences)
+	}
+	var actualAccount v1alpha1.CloudAccount
+	if getErr := c.Get(context.Background(), types.NamespacedName{Namespace: "costs", Name: account.Name}, &actualAccount); getErr != nil {
+		t.Fatal(getErr)
+	}
+	condition := apiMeta.FindStatusCondition(actualAccount.Status.Conditions, "CollectorReady")
+	if condition == nil || condition.Status != metav1.ConditionFalse || condition.Reason != "CronJobReconcileFailed" {
+		t.Fatalf("CollectorReady = %#v, want False/CronJobReconcileFailed", condition)
+	}
+	if condition.Message != "Unable to reconcile the managed Collector CronJob." || strings.Contains(condition.Message, "not controlled") {
+		t.Errorf("CollectorReady message = %q, want fixed safe message", condition.Message)
+	}
+	if apiMeta.FindStatusCondition(actualAccount.Status.Conditions, "CollectionReady") != nil || actualAccount.Status.LastCollectionTime != nil || actualAccount.Status.LastSuccessfulCollectionTime != nil {
+		t.Errorf("CollectorReady reconciliation changed collection outcome status: %#v", actualAccount.Status)
 	}
 }
 

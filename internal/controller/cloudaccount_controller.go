@@ -52,9 +52,7 @@ func (r *CloudAccountReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		Name:      account.Spec.CredentialRef.Name,
 	}, &secret)
 	if apierrors.IsNotFound(err) {
-		if err := r.deleteCollectorCronJob(ctx, &account); err != nil {
-			return reconcile.Result{}, err
-		}
+		deleteErr := r.deleteCollectorCronJob(ctx, &account)
 		changed := apiMeta.SetStatusCondition(&account.Status.Conditions, metav1.Condition{
 			Type:               "CredentialsReady",
 			Status:             metav1.ConditionFalse,
@@ -62,10 +60,19 @@ func (r *CloudAccountReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			Reason:             "SecretNotFound",
 			Message:            "The referenced credential Secret does not exist in the CloudAccount namespace.",
 		})
-		if changed {
-			return reconcile.Result{}, r.Status().Update(ctx, &account)
+		collectorReason := "SecretNotFound"
+		collectorMessage := "Collector CronJob is not available because credentials are missing."
+		if deleteErr != nil {
+			collectorReason = "CronJobReconcileFailed"
+			collectorMessage = "Unable to reconcile the managed Collector CronJob."
 		}
-		return reconcile.Result{}, nil
+		changed = setCollectorReadyCondition(&account, metav1.ConditionFalse, collectorReason, collectorMessage) || changed
+		if changed {
+			if updateErr := r.Status().Update(ctx, &account); updateErr != nil {
+				return reconcile.Result{}, updateErr
+			}
+		}
+		return reconcile.Result{}, deleteErr
 	}
 	if err != nil {
 		return reconcile.Result{}, err
@@ -78,23 +85,44 @@ func (r *CloudAccountReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		Reason:             "SecretFound",
 		Message:            "The referenced credential Secret exists in the CloudAccount namespace.",
 	})
+	var collectorErr error
+	if account.Spec.Collection.Enabled {
+		collectorErr = r.reconcileCollectorCronJob(ctx, &account)
+		if collectorErr == nil {
+			changed = setCollectorReadyCondition(&account, metav1.ConditionTrue, "CronJobReady", "The managed Collector CronJob is reconciled.") || changed
+		}
+	} else {
+		collectorErr = r.deleteCollectorCronJob(ctx, &account)
+		if collectorErr == nil {
+			changed = setCollectorReadyCondition(&account, metav1.ConditionFalse, "CollectionDisabled", "Collection is disabled for this CloudAccount.") || changed
+		}
+	}
+	if collectorErr != nil {
+		changed = setCollectorReadyCondition(&account, metav1.ConditionFalse, "CronJobReconcileFailed", "Unable to reconcile the managed Collector CronJob.") || changed
+	}
 	if changed {
 		if err := r.Status().Update(ctx, &account); err != nil {
 			return reconcile.Result{}, err
 		}
 	}
-	if account.Spec.Collection.Enabled {
-		if err := r.reconcileCollectorCronJob(ctx, &account); err != nil {
-			return reconcile.Result{}, err
-		}
-	} else if err := r.deleteCollectorCronJob(ctx, &account); err != nil {
-		return reconcile.Result{}, err
+	if collectorErr != nil {
+		return reconcile.Result{}, collectorErr
 	}
 	if err := r.reconcileCollectionStatus(ctx, &account); err != nil {
 		return reconcile.Result{}, err
 	}
 
 	return reconcile.Result{}, nil
+}
+
+func setCollectorReadyCondition(account *v1alpha1.CloudAccount, status metav1.ConditionStatus, reason, message string) bool {
+	return apiMeta.SetStatusCondition(&account.Status.Conditions, metav1.Condition{
+		Type:               "CollectorReady",
+		Status:             status,
+		ObservedGeneration: account.Generation,
+		Reason:             reason,
+		Message:            message,
+	})
 }
 
 func (r *CloudAccountReconciler) reconcileCollectionStatus(ctx context.Context, account *v1alpha1.CloudAccount) error {

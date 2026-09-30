@@ -405,7 +405,47 @@ status:
 
     - type: CollectorReady
       status: "False"
+      reason: SecretNotFound
 ```
+
+`CollectorReady` describes whether the desired Collector CronJob is available. It does not indicate that a Job is running or that billing data is fresh.
+
+### Collection enabled
+
+```yaml
+status:
+  conditions:
+    - type: CredentialsReady
+      status: "True"
+      reason: SecretFound
+
+    - type: CollectorReady
+      status: "True"
+      reason: CronJobReady
+```
+
+### Collection disabled
+
+```yaml
+status:
+  conditions:
+    - type: CollectorReady
+      status: "False"
+      reason: CollectionDisabled
+```
+
+### Collector CronJob reconciliation failure
+
+```yaml
+status:
+  conditions:
+    - type: CollectorReady
+      status: "False"
+      reason: CronJobReconcileFailed
+      message: Unable to reconcile the managed Collector CronJob.
+```
+
+The condition message is deliberately stable and does not expose Kubernetes API errors or credential data. The underlying error is available in Operator logs.
 
 ### CSP rate limit
 
