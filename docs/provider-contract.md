@@ -40,6 +40,8 @@ type Provider interface {
 
 The exact Go API may evolve, but the responsibility boundary must remain.
 
+The shared implementation currently provides `internal/provider.Registry` for resolving registered factories and `internal/provider.ProviderError` for stable error classes. Registration happens during process setup; provider packages should register under the lowercase names used by `CloudAccount.spec.provider`. Keep provider-specific configuration inside the factory closure or adapter package rather than adding it to the shared registry API.
+
 Provider implementations are responsible for:
 
 - provider authentication
@@ -134,6 +136,8 @@ Do not force callers to parse provider-specific error strings.
 Where useful, errors may wrap upstream details for logs while still exposing a stable class.
 
 Never include secrets in errors.
+
+The shared Go error classes are `ErrorAuthenticationFailed`, `ErrorPermissionDenied`, `ErrorRateLimited`, `ErrorTimeout`, `ErrorProviderUnavailable`, `ErrorInvalidResponse`, `ErrorInvalidCredentialShape`, and `ErrorUnsupportedBillingScope`. Wrap upstream errors in `ProviderError` and use `IsErrorClass` to inspect the stable class without parsing message text.
 
 ---
 
