@@ -2,7 +2,7 @@ CONTROLLER_GEN ?= $(shell go env GOPATH)/bin/controller-gen
 CONTROLLER_TOOLS_VERSION ?= v0.20.0
 IMAGE ?= louder-operator:local
 
-.PHONY: build docker-build kind-e2e fmt fmt-check vet test manifests controller-gen
+.PHONY: build docker-build kind-e2e kind-e2e-secrets fmt fmt-check vet test manifests controller-gen
 
 build:
 	@mkdir -p bin
@@ -13,6 +13,9 @@ docker-build:
 
 kind-e2e: docker-build
 	bash scripts/kind/e2e.sh
+
+kind-e2e-secrets: docker-build
+	bash scripts/kind/e2e.sh secrets
 
 fmt:
 	gofmt -w $$(find api cmd internal -name '*.go' -type f)
