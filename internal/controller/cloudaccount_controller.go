@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"reflect"
+	"sort"
 
 	"github.com/ghdwlsgur/louder/api/v1alpha1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -32,6 +33,8 @@ type CloudAccountReconciler struct {
 	CollectorFixtureMode bool
 	Scheme               *runtime.Scheme
 }
+
+const cloudAccountAnnotation = "finops.sre.local/cloud-account"
 
 func (r *CloudAccountReconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
 	var account v1alpha1.CloudAccount
@@ -87,8 +90,104 @@ func (r *CloudAccountReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	} else if err := r.deleteCollectorCronJob(ctx, &account); err != nil {
 		return reconcile.Result{}, err
 	}
+	if err := r.reconcileCollectionStatus(ctx, &account); err != nil {
+		return reconcile.Result{}, err
+	}
 
 	return reconcile.Result{}, nil
+}
+
+func (r *CloudAccountReconciler) reconcileCollectionStatus(ctx context.Context, account *v1alpha1.CloudAccount) error {
+	var cronJob batchv1.CronJob
+	key := types.NamespacedName{Namespace: account.Namespace, Name: collectorCronJobName(account.Name)}
+	if err := r.Get(ctx, key, &cronJob); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+	cronJobOwner := metav1.GetControllerOf(&cronJob)
+	if cronJobOwner == nil || cronJobOwner.UID != account.UID {
+		return nil
+	}
+
+	var jobs batchv1.JobList
+	jobReader := r.APIReader
+	if jobReader == nil {
+		jobReader = r.Client
+	}
+	if err := jobReader.List(ctx, &jobs,
+		client.InNamespace(account.Namespace),
+		client.MatchingLabels{"app.kubernetes.io/name": "louder-collector", "finops.sre.local/cloud-account": accountLabelValue(account.Name)},
+	); err != nil {
+		return err
+	}
+	ownedTerminalJobs := make([]*batchv1.Job, 0, len(jobs.Items))
+	for i := range jobs.Items {
+		job := &jobs.Items[i]
+		owner := metav1.GetControllerOf(job)
+		if owner == nil || owner.Kind != "CronJob" || owner.Name != cronJob.Name || owner.UID != cronJob.UID {
+			continue
+		}
+		if terminalJobCondition(job) != nil {
+			ownedTerminalJobs = append(ownedTerminalJobs, job)
+		}
+	}
+	if len(ownedTerminalJobs) == 0 {
+		return nil
+	}
+	sort.Slice(ownedTerminalJobs, func(i, j int) bool {
+		if ownedTerminalJobs[i].CreationTimestamp.Equal(&ownedTerminalJobs[j].CreationTimestamp) {
+			return ownedTerminalJobs[i].Name < ownedTerminalJobs[j].Name
+		}
+		return ownedTerminalJobs[i].CreationTimestamp.Before(&ownedTerminalJobs[j].CreationTimestamp)
+	})
+
+	latestAttempt := ownedTerminalJobs[len(ownedTerminalJobs)-1]
+	latestAttemptTime := jobTerminalTime(latestAttempt)
+	if account.Status.LastCollectionTime != nil && !latestAttemptTime.After(account.Status.LastCollectionTime.Time) {
+		return nil
+	}
+	previousStatus := account.DeepCopy().Status
+	condition := terminalJobCondition(latestAttempt)
+	collectionCondition := metav1.Condition{
+		Type:               "CollectionReady",
+		ObservedGeneration: account.Generation,
+	}
+	if condition.Type == batchv1.JobComplete {
+		collectionCondition.Status = metav1.ConditionTrue
+		collectionCondition.Reason = "CollectionSucceeded"
+		collectionCondition.Message = "The latest Collector Job completed successfully."
+		account.Status.LastSuccessfulCollectionTime = latestAttemptTime.DeepCopy()
+	} else {
+		collectionCondition.Status = metav1.ConditionFalse
+		collectionCondition.Reason = "CollectorJobFailed"
+		collectionCondition.Message = "The latest Collector Job failed."
+	}
+	apiMeta.SetStatusCondition(&account.Status.Conditions, collectionCondition)
+	account.Status.LastCollectionTime = latestAttemptTime.DeepCopy()
+	if reflect.DeepEqual(previousStatus, account.Status) {
+		return nil
+	}
+	return r.Status().Update(ctx, account)
+}
+
+func terminalJobCondition(job *batchv1.Job) *batchv1.JobCondition {
+	for i := range job.Status.Conditions {
+		condition := &job.Status.Conditions[i]
+		if condition.Status == corev1.ConditionTrue && (condition.Type == batchv1.JobComplete || condition.Type == batchv1.JobFailed) {
+			return condition
+		}
+	}
+	return nil
+}
+
+func jobTerminalTime(job *batchv1.Job) metav1.Time {
+	if job.Status.CompletionTime != nil {
+		return *job.Status.CompletionTime
+	}
+	condition := terminalJobCondition(job)
+	if condition != nil && !condition.LastTransitionTime.IsZero() {
+		return condition.LastTransitionTime
+	}
+	return job.CreationTimestamp
 }
 
 func (r *CloudAccountReconciler) reconcileCollectorCronJob(ctx context.Context, account *v1alpha1.CloudAccount) error {
@@ -143,21 +242,26 @@ func collectorCronJob(account *v1alpha1.CloudAccount, image string, fixtureMode 
 		Spec: batchv1.CronJobSpec{
 			Schedule:          account.Spec.Collection.Schedule,
 			ConcurrencyPolicy: batchv1.ForbidConcurrent,
-			JobTemplate: batchv1.JobTemplateSpec{Spec: batchv1.JobSpec{
-				BackoffLimit: &backoffLimit,
-				Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: labels}, Spec: corev1.PodSpec{
-					RestartPolicy:                corev1.RestartPolicyNever,
-					AutomountServiceAccountToken: ptr.To(false),
-					SecurityContext:              &corev1.PodSecurityContext{RunAsNonRoot: ptr.To(true), RunAsUser: ptr.To[int64](65532), RunAsGroup: ptr.To[int64](65532), SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault}},
-					Containers: []corev1.Container{{
-						Name: "collector", Image: image, ImagePullPolicy: corev1.PullIfNotPresent,
-						Command: []string{"/louder-collector"}, Args: args,
-						EnvFrom:         []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: account.Spec.CredentialRef.Name}}}},
-						SecurityContext: &corev1.SecurityContext{AllowPrivilegeEscalation: ptr.To(false), ReadOnlyRootFilesystem: ptr.To(true), Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}}},
-						Resources:       corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("50m"), corev1.ResourceMemory: resource.MustParse("64Mi")}, Limits: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("500m"), corev1.ResourceMemory: resource.MustParse("256Mi")}},
+			JobTemplate: batchv1.JobTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels:      labels,
+					Annotations: map[string]string{cloudAccountAnnotation: account.Name},
+				},
+				Spec: batchv1.JobSpec{
+					BackoffLimit: &backoffLimit,
+					Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: labels}, Spec: corev1.PodSpec{
+						RestartPolicy:                corev1.RestartPolicyNever,
+						AutomountServiceAccountToken: ptr.To(false),
+						SecurityContext:              &corev1.PodSecurityContext{RunAsNonRoot: ptr.To(true), RunAsUser: ptr.To[int64](65532), RunAsGroup: ptr.To[int64](65532), SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault}},
+						Containers: []corev1.Container{{
+							Name: "collector", Image: image, ImagePullPolicy: corev1.PullIfNotPresent,
+							Command: []string{"/louder-collector"}, Args: args,
+							EnvFrom:         []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: account.Spec.CredentialRef.Name}}}},
+							SecurityContext: &corev1.SecurityContext{AllowPrivilegeEscalation: ptr.To(false), ReadOnlyRootFilesystem: ptr.To(true), Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}}},
+							Resources:       corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("50m"), corev1.ResourceMemory: resource.MustParse("64Mi")}, Limits: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("500m"), corev1.ResourceMemory: resource.MustParse("256Mi")}},
+						}},
 					}},
 				}},
-			}},
 		},
 	}
 }
@@ -186,8 +290,21 @@ func (r *CloudAccountReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.CloudAccount{}).
 		Owns(&batchv1.CronJob{}).
+		WatchesMetadata(&batchv1.Job{}, handler.EnqueueRequestsFromMapFunc(r.requestsForCollectorJob)).
 		WatchesMetadata(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.requestsForCredentialSecret)).
 		Complete(r)
+}
+
+func (r *CloudAccountReconciler) requestsForCollectorJob(_ context.Context, obj client.Object) []reconcile.Request {
+	job, ok := obj.(*metav1.PartialObjectMetadata)
+	if !ok {
+		return nil
+	}
+	accountName := job.GetAnnotations()[cloudAccountAnnotation]
+	if accountName == "" {
+		return nil
+	}
+	return []reconcile.Request{{NamespacedName: types.NamespacedName{Namespace: job.GetNamespace(), Name: accountName}}}
 }
 
 func (r *CloudAccountReconciler) requestsForCredentialSecret(ctx context.Context, obj client.Object) []reconcile.Request {

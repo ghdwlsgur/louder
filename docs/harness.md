@@ -332,7 +332,7 @@ The local targets cover distinct slices:
 
 | Target | Verified behavior |
 |---|---|
-| `make kind-e2e` | CloudAccount missing-Secret status, CronJob creation, and a completed fixture Collector Job |
+| `make kind-e2e` | CloudAccount missing-Secret status, CronJob creation, a completed fixture Collector Job, and `CollectionReady=True` status reporting |
 | `make kind-e2e-secrets` | Vault -> ESO -> Secret -> CloudAccount readiness and Vault failure/recovery; its CloudAccount keeps collection disabled |
 
 Neither target yet verifies a production billing API or a single combined Vault/ESO/Collector/ClickHouse flow.
@@ -415,6 +415,20 @@ status:
     - type: CollectionReady
       status: "False"
       reason: ProviderRateLimited
+```
+
+### Collector Job failure
+
+Kubernetes Job outcomes use a stable condition and do not copy pod termination details into CloudAccount status:
+
+```yaml
+status:
+  lastCollectionTime: "2026-09-30T00:00:00Z"
+  lastSuccessfulCollectionTime: "2026-09-29T00:00:00Z"
+  conditions:
+    - type: CollectionReady
+      status: "False"
+      reason: CollectorJobFailed
 ```
 
 ### Stale billing data

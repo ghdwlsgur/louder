@@ -31,6 +31,20 @@ kubectl --context "$context" wait \
   --timeout=120s \
   --namespace "$namespace" \
   "job/$job"
+kubectl --context "$context" wait \
+  --for=condition=CollectionReady=True \
+  --timeout=60s \
+  --namespace "$namespace" \
+  "cloudaccount/$account"
+
+collection_reason=$(kubectl --context "$context" get \
+  --namespace "$namespace" \
+  "cloudaccount/$account" \
+  -o jsonpath='{.status.conditions[?(@.type=="CollectionReady")].reason}')
+if [[ "$collection_reason" != CollectionSucceeded ]]; then
+  printf 'Expected CollectionReady reason CollectionSucceeded, got %q\n' "$collection_reason" >&2
+  exit 1
+fi
 
 logs=$(kubectl --context "$context" logs --namespace "$namespace" "job/$job")
 if ! grep -Fq '"sourceRecordId":"fixture-aws-001"' <<<"$logs"; then
