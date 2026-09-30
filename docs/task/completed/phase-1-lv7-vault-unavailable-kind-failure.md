@@ -1,6 +1,6 @@
 # Phase 1 · LV7 — Vault Unavailable Failure Injection in kind
 
-> Status: active (2026-09-30)
+> Status: completed (2026-09-30)
 > Scope: Extend local secret-flow E2E to verify ESO reports a safe failure while Vault is unavailable and recovers after Vault returns.
 
 ## Goal
@@ -48,7 +48,7 @@ Verify the Vault-to-ESO integration's outage behavior against the real Kubernete
 - [x] Extend `make kind-e2e-secrets` orchestration without weakening its cleanup or credential-output protections.
 - [x] Update `docs/harness.md` and record the task's verification results.
 - [x] Run focused failure/recovery checks, both kind targets, Go checks, manifest generation, shell syntax, English task-doc scan, and diff checks.
-- [ ] Record PR link, check results, and merge commit before moving this plan to `completed`.
+- [x] Record PR link, check results, and merge commit before moving this plan to `completed`.
 
 ## Acceptance criteria
 
@@ -82,3 +82,5 @@ Verify the Vault-to-ESO integration's outage behavior against the real Kubernete
 - `GOCACHE=/tmp/louder-go-build make manifests` — passed.
 - `make fmt-check`, `bash -n scripts/kind/*.sh`, task-doc English scan, and `git diff --check` — passed.
 - `make kind-e2e-secrets` removed the disposable `louder-e2e` cluster through its EXIT cleanup after both successful and failed runs.
+- Implementation PR: [#3 Test Vault outage and ESO recovery in kind](https://github.com/ghdwlsgur/louder/pull/3) — merged into `main` at `bd21fa62a90ec027ee39dff03007fd5d93abcf40` on 2026-09-30.
+- GitHub reported no PR checks for this branch; all listed local verification completed before merge. The PR used the regular merge method without an administrative bypass.
