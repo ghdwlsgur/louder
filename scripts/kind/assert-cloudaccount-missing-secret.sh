@@ -11,6 +11,11 @@ kubectl --context "$context" wait \
   --timeout=60s \
   -n "$namespace" \
   "cloudaccount/$name"
+kubectl --context "$context" wait \
+  --for=condition=CollectorReady=False \
+  --timeout=60s \
+  -n "$namespace" \
+  "cloudaccount/$name"
 
 reason=$(kubectl --context "$context" get \
   -n "$namespace" \
@@ -22,4 +27,14 @@ if [[ "$reason" != SecretNotFound ]]; then
   exit 1
 fi
 
-printf 'CloudAccount reported CredentialsReady=False (SecretNotFound)\n'
+collector_reason=$(kubectl --context "$context" get \
+  -n "$namespace" \
+  "cloudaccount/$name" \
+  -o jsonpath='{.status.conditions[?(@.type=="CollectorReady")].reason}')
+
+if [[ "$collector_reason" != SecretNotFound ]]; then
+  printf 'Expected CollectorReady reason SecretNotFound, got %q\n' "$collector_reason" >&2
+  exit 1
+fi
+
+printf 'CloudAccount reported CredentialsReady=False and CollectorReady=False (SecretNotFound)\n'
