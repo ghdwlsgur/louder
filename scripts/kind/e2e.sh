@@ -144,6 +144,10 @@ if [[ "$red_reason" != SecretSyncedError ]]; then
   exit 1
 fi
 printf 'RED: ExternalSecret reports SecretSyncedError while the Vault path is absent\n'
+kubectl --context "$context" delete \
+  --namespace cloud-cost \
+  externalsecret/aws-kind-e2e-credentials \
+  --ignore-not-found
 
 access_key_id="fixture-$(openssl rand -hex 16)"
 secret_access_key=$(openssl rand -hex 32)

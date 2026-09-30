@@ -12,6 +12,23 @@ kubectl --context "$context" wait \
   --timeout=120s \
   clustersecretstore/vault-kind
 
+kubectl --context "$context" apply -f config/kind/fixtures/cloudaccount-vault-eso.yaml
+initial_reason=
+for attempt in $(seq 1 30); do
+  initial_reason=$(kubectl --context "$context" get \
+    -n "$namespace" \
+    "cloudaccount/$cloud_account" \
+    -o jsonpath='{.status.conditions[?(@.type=="CredentialsReady")].reason}')
+  if [[ "$initial_reason" == SecretNotFound ]]; then
+    break
+  fi
+  sleep 1
+done
+if [[ "$initial_reason" != SecretNotFound ]]; then
+  printf 'Expected initial CredentialsReady reason SecretNotFound, got %q\n' "$initial_reason" >&2
+  exit 1
+fi
+
 kubectl --context "$context" apply -f config/kind/secret-flow/external-secret.yaml
 kubectl --context "$context" wait \
   --for=condition=Ready=True \
@@ -34,12 +51,18 @@ if [[ -z "$access_key_id" || -z "$secret_access_key" ]]; then
 fi
 unset access_key_id secret_access_key
 
-kubectl --context "$context" apply -f config/kind/fixtures/cloudaccount-vault-eso.yaml
-kubectl --context "$context" wait \
+if ! kubectl --context "$context" wait \
   --for=condition=CredentialsReady=True \
   --timeout=60s \
   -n "$namespace" \
-  "cloudaccount/$cloud_account"
+  "cloudaccount/$cloud_account"; then
+  reason=$(kubectl --context "$context" get \
+    -n "$namespace" \
+    "cloudaccount/$cloud_account" \
+    -o jsonpath='{.status.conditions[?(@.type=="CredentialsReady")].reason}')
+  printf 'CloudAccount did not observe the newly created credential Secret; reason=%q\n' "$reason" >&2
+  exit 1
+fi
 
 reason=$(kubectl --context "$context" get \
   -n "$namespace" \

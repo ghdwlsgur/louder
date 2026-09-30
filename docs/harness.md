@@ -305,10 +305,13 @@ install ESO
 seed Vault
        │
        ▼
-create ExternalSecret
+create CloudAccount
        │
        ▼
-create CloudAccount
+create ExternalSecret and materialize credential Secret
+       │
+       ▼
+reconcile CredentialsReady from the Secret event
        │
        ▼
 Operator reconcile
@@ -339,6 +342,8 @@ Vault -> ESO -> Kubernetes Secret -> workload
 ```
 
 Do not replace this path with a manually created Secret when the test is meant to verify secret integration.
+
+The CloudAccount is created before its ESO-managed credential Secret. The Operator must initially report `SecretNotFound` and then reconcile it to `SecretFound` when the Secret event arrives; creating the CloudAccount after the Secret would not verify this lifecycle transition.
 
 ---
 

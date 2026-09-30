@@ -102,3 +102,53 @@ func TestReconcileReportsCredentialSecretReady(t *testing.T) {
 		t.Fatalf("CredentialsReady = (%s, %s), want (True, SecretFound)", condition.Status, condition.Reason)
 	}
 }
+
+func TestRequestsForCredentialSecretOnlyEnqueuesReferencingAccounts(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := v1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+
+	account := func(name, namespace, credentialSecret string) *v1alpha1.CloudAccount {
+		return &v1alpha1.CloudAccount{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+			Spec: v1alpha1.CloudAccountSpec{
+				CredentialRef: corev1.LocalObjectReference{Name: credentialSecret},
+			},
+		}
+	}
+	client := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(
+			account("aws-one", "costs", "shared-credentials"),
+			account("aws-two", "costs", "shared-credentials"),
+			account("gcp-other", "costs", "other-credentials"),
+			account("aws-another-namespace", "other-costs", "shared-credentials"),
+		).
+		Build()
+
+	reconciler := &CloudAccountReconciler{Client: client}
+	requests := reconciler.requestsForCredentialSecret(context.Background(), &metav1.PartialObjectMetadata{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "Secret"},
+		ObjectMeta: metav1.ObjectMeta{Name: "shared-credentials", Namespace: "costs"},
+	})
+	if len(requests) != 2 {
+		t.Fatalf("got %d reconcile requests, want 2", len(requests))
+	}
+	want := map[types.NamespacedName]bool{
+		{Namespace: "costs", Name: "aws-one"}: true,
+		{Namespace: "costs", Name: "aws-two"}: true,
+	}
+	for _, request := range requests {
+		if !want[request.NamespacedName] {
+			t.Errorf("unexpected reconcile request: %s", request.NamespacedName)
+		}
+		delete(want, request.NamespacedName)
+	}
+	if len(want) != 0 {
+		t.Errorf("missing reconcile requests: %v", want)
+	}
+}
