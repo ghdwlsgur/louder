@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-context=kind-louder-e2e
+context="kind-${KIND_CLUSTER_NAME:-louder-e2e}"
 namespace=cloud-cost
 account=kind-fixture-collector
 cronjob="$account-collector"
