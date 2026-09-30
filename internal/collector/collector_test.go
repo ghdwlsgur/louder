@@ -60,7 +60,7 @@ func TestRunEmitsFixtureRecordsAsJSONLines(t *testing.T) {
 	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &record); err != nil {
 		t.Fatalf("output is not a JSON record: %v", err)
 	}
-	if record.Provider != "aws" || record.BillingScope != "synthetic-account" || record.SourceRecordID == "" {
+	if record.Provider != "aws" || record.BillingScope != "synthetic-account" || record.SourceRecordID == "" || record.CostBasis != provider.CostBasisUnblended {
 		t.Errorf("record = %#v, want AWS fixture record scoped to synthetic-account", record)
 	}
 	if output.Bytes()[output.Len()-1] != '\n' {

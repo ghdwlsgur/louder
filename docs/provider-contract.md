@@ -114,6 +114,10 @@ tags/labels
 raw dimensions needed for normalization
 ```
 
+`RawCostRecord.CostBasis` carries the provider adapter's normalized cost semantic. The initial AWS adapter maps Cost Explorer `UnblendedCost` to `unblended_cost`. Adapters must not populate fields with guessed values.
+
+The first `internal/normalize` output keeps provider, billing account, source record ID, cost basis, amount, currency, and usage interval. Amounts remain decimal strings in the source currency. Service/resource dimensions and currency conversion are outside this initial slice.
+
 ---
 
 ## 5. Error taxonomy

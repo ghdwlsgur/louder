@@ -161,6 +161,7 @@ func mapDailyResult(accountID string, result types.ResultByTime) (provider.RawCo
 		Provider:       "aws",
 		SourceRecordID: "aws-cost-explorer-" + accountID + "-" + *result.TimePeriod.Start,
 		BillingScope:   accountID,
+		CostBasis:      provider.CostBasisUnblended,
 		Amount:         *metric.Amount,
 		Currency:       *metric.Unit,
 		UsageStart:     start,

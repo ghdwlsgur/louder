@@ -162,6 +162,8 @@ testdata/ncp/
 
 Tests compare normalized output against the expected golden file.
 
+The initial golden case normalizes an AWS account-day `UnblendedCost` record and verifies exact amount-string, currency, source ID, and UTC interval preservation. It does not imply that service/resource mapping or currency conversion exists.
+
 Golden tests are especially useful for:
 
 - provider schema changes

@@ -339,6 +339,8 @@ source_record_id
 collected_at
 ```
 
+This is the target schema, not a claim that every provider supplies every field today. The first normalized slice is account-level daily cost and contains only provider, billing account, source record ID, cost basis, amount, currency, and usage interval. AWS currently supplies `unblended_cost`; unavailable service, resource, usage, credit, and discount fields are omitted rather than fabricated.
+
 Preserve original currency and normalized reporting currency separately.
 
 Recommended:
