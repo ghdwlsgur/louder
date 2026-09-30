@@ -28,10 +28,11 @@ import (
 
 type CloudAccountReconciler struct {
 	client.Client
-	APIReader            client.Reader
-	CollectorImage       string
-	CollectorFixtureMode bool
-	Scheme               *runtime.Scheme
+	APIReader                  client.Reader
+	CollectorImage             string
+	CollectorFixtureMode       bool
+	CollectorStorageSecretName string
+	Scheme                     *runtime.Scheme
 }
 
 const cloudAccountAnnotation = "finops.sre.local/cloud-account"
@@ -219,7 +220,7 @@ func jobTerminalTime(job *batchv1.Job) metav1.Time {
 }
 
 func (r *CloudAccountReconciler) reconcileCollectorCronJob(ctx context.Context, account *v1alpha1.CloudAccount) error {
-	desired := collectorCronJob(account, r.CollectorImage, r.CollectorFixtureMode)
+	desired := collectorCronJob(account, r.CollectorImage, r.CollectorFixtureMode, r.CollectorStorageSecretName)
 	r.Scheme.Default(desired)
 	if err := controllerutil.SetControllerReference(account, desired, r.Scheme); err != nil {
 		return err
@@ -258,7 +259,7 @@ func (r *CloudAccountReconciler) deleteCollectorCronJob(ctx context.Context, acc
 	return client.IgnoreNotFound(r.Delete(ctx, &cronJob))
 }
 
-func collectorCronJob(account *v1alpha1.CloudAccount, image string, fixtureMode bool) *batchv1.CronJob {
+func collectorCronJob(account *v1alpha1.CloudAccount, image string, fixtureMode bool, storageSecretName string) *batchv1.CronJob {
 	labels := map[string]string{"app.kubernetes.io/name": "louder-collector", "finops.sre.local/cloud-account": accountLabelValue(account.Name)}
 	backoffLimit := int32(2)
 	args := []string{"--provider=" + account.Spec.Provider, "--account-id=" + account.Spec.AccountID}
@@ -284,7 +285,7 @@ func collectorCronJob(account *v1alpha1.CloudAccount, image string, fixtureMode 
 						Containers: []corev1.Container{{
 							Name: "collector", Image: image, ImagePullPolicy: corev1.PullIfNotPresent,
 							Command: []string{"/louder-collector"}, Args: args,
-							EnvFrom:         []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: account.Spec.CredentialRef.Name}}}},
+							EnvFrom:         collectorSecretEnvFrom(account, fixtureMode, storageSecretName),
 							SecurityContext: &corev1.SecurityContext{AllowPrivilegeEscalation: ptr.To(false), ReadOnlyRootFilesystem: ptr.To(true), Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}}},
 							Resources:       corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("50m"), corev1.ResourceMemory: resource.MustParse("64Mi")}, Limits: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("500m"), corev1.ResourceMemory: resource.MustParse("256Mi")}},
 						}},
@@ -292,6 +293,17 @@ func collectorCronJob(account *v1alpha1.CloudAccount, image string, fixtureMode 
 				}},
 		},
 	}
+}
+
+func collectorSecretEnvFrom(account *v1alpha1.CloudAccount, fixtureMode bool, storageSecretName string) []corev1.EnvFromSource {
+	secrets := []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: account.Spec.CredentialRef.Name}}}}
+	if storageSecretName != "" {
+		secrets = append(secrets, corev1.EnvFromSource{SecretRef: &corev1.SecretEnvSource{
+			LocalObjectReference: corev1.LocalObjectReference{Name: storageSecretName},
+			Optional:             ptr.To(fixtureMode),
+		}})
+	}
+	return secrets
 }
 
 func collectorCronJobName(accountName string) string {

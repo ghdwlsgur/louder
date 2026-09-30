@@ -322,7 +322,7 @@ embedded fixture Collector
 assert JSON Lines output
 ```
 
-The Collector has an AWS Cost Explorer adapter for daily account-level `UnblendedCost` totals. Its unit and provider contract tests use a synthetic SDK client; the local kind flow stays offline and runs embedded fixtures for AWS, GCP, and Azure. The current kind flow proves scheduling, credential Secret reference wiring, image startup, and output encoding only. Normalization, ClickHouse ingestion, Analyzer, and Notifier are not yet exercised by this local flow.
+The Collector has an AWS Cost Explorer adapter for daily account-level `UnblendedCost` totals. Its unit and provider contract tests use a synthetic SDK client; the local kind flow stays offline and runs embedded fixtures for AWS, GCP, and Azure. `make kind-e2e-storage` additionally starts an ephemeral ClickHouse instance, applies the checked-in schema, runs the AWS fixture twice, and checks that `FINAL` returns one logical row. This verifies normalization and persistence without CSP access. Analyzer and Notifier are not yet exercised by these local flows.
 
 The kind E2E scripts default to cluster name `louder-e2e`. Set `KIND_CLUSTER_NAME` to run against a separate disposable cluster, for example `KIND_CLUSTER_NAME=louder-e2e-local make kind-e2e`. A cluster that already has the selected name is never replaced.
 
@@ -332,8 +332,9 @@ The local targets cover distinct slices:
 |---|---|
 | `make kind-e2e` | CloudAccount missing-Secret status, CronJob creation, a completed fixture Collector Job, and `CollectionReady=True` status reporting |
 | `make kind-e2e-secrets` | Vault -> ESO -> Secret -> CloudAccount readiness and Vault failure/recovery; its CloudAccount keeps collection disabled |
+| `make kind-e2e-storage` | Fixture normalization, ClickHouse batch persistence, and one logical row after replay using `FINAL` |
 
-Neither target yet verifies a production billing API or a single combined Vault/ESO/Collector/ClickHouse flow.
+These targets do not verify a production billing API or a single combined Vault/ESO/Collector/ClickHouse flow. The storage E2E uses runtime-generated synthetic ClickHouse credentials and an ephemeral database; it does not exercise production Vault provisioning.
 
 The E2E suite must exercise the actual production-style secret path:
 

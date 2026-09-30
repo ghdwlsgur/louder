@@ -66,6 +66,46 @@ spec:
 
 The Collector passes this Secret through `envFrom`, so AWS credential keys must use the AWS SDK environment variable names. The AWS Cost Explorer adapter needs only the read-only `ce:GetCostAndUsage` action. It uses the SDK default credential chain and does not read Vault directly.
 
+### Shared ClickHouse storage Secret
+
+Collector storage credentials are held in a separate namespace-local Secret and are never added to a `CloudAccount` or a provider credential Secret. Configure the Operator with `--collector-storage-secret-name=<secret-name>`; the referenced Secret is added to each Collector Pod through `envFrom`. The fixture-mode kind configuration marks this reference optional so the ordinary offline smoke path works without ClickHouse.
+
+The Secret must contain `CLICKHOUSE_ADDR`, `CLICKHOUSE_DATABASE`, `CLICKHOUSE_USERNAME`, and `CLICKHOUSE_PASSWORD`. Set `CLICKHOUSE_SECURE=true` when the native TCP connection uses TLS. Production values should be synchronized from Vault through External Secrets Operator, for example:
+
+```yaml
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: clickhouse-collector
+  namespace: cloud-cost
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: vault-backend
+    kind: ClusterSecretStore
+  target:
+    name: clickhouse-collector
+  data:
+    - secretKey: CLICKHOUSE_ADDR
+      remoteRef:
+        key: kv/finops/clickhouse/collector
+        property: address
+    - secretKey: CLICKHOUSE_DATABASE
+      remoteRef:
+        key: kv/finops/clickhouse/collector
+        property: database
+    - secretKey: CLICKHOUSE_USERNAME
+      remoteRef:
+        key: kv/finops/clickhouse/collector
+        property: username
+    - secretKey: CLICKHOUSE_PASSWORD
+      remoteRef:
+        key: kv/finops/clickhouse/collector
+        property: password
+```
+
+Apply `config/storage/clickhouse/cost_records.sql` through the deployment migration process before enabling ingestion. The runtime user needs insert permission on `cost_records`; it does not need DDL permission. For replay-safe reads, use `FINAL` because `ReplacingMergeTree` background deduplication is asynchronous.
+
 ---
 
 ## 3. CloudAccount references

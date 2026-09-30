@@ -17,8 +17,14 @@ case "$mode" in
       fi
     done
     ;;
+  storage)
+    if ! command -v openssl >/dev/null 2>&1; then
+      printf 'Required command not found: openssl\n' >&2
+      exit 1
+    fi
+    ;;
   *)
-    printf 'Unknown E2E mode: %s (expected smoke or secrets)\n' "$mode" >&2
+    printf 'Unknown E2E mode: %s (expected smoke, secrets, or storage)\n' "$mode" >&2
     exit 1
     ;;
 esac
@@ -72,6 +78,30 @@ kubectl --context "$context" rollout status \
 if [[ "$mode" == smoke ]]; then
   bash scripts/kind/assert-cloudaccount-missing-secret.sh
   bash scripts/kind/assert-collector-cronjob.sh
+  exit
+fi
+
+if [[ "$mode" == storage ]]; then
+  clickhouse_password=$(openssl rand -hex 24)
+  kubectl --context "$context" create secret generic louder-clickhouse-credentials \
+    --namespace cloud-cost \
+    --from-literal=CLICKHOUSE_ADDR=clickhouse.cloud-cost.svc:9000 \
+    --from-literal=CLICKHOUSE_DATABASE=finops \
+    --from-literal=CLICKHOUSE_USERNAME=louder \
+    --from-literal="CLICKHOUSE_PASSWORD=$clickhouse_password" \
+    --from-literal=CLICKHOUSE_USER=louder \
+    --from-literal=CLICKHOUSE_DB=finops \
+    --dry-run=client -o yaml | kubectl --context "$context" apply -f -
+  unset clickhouse_password
+  kubectl --context "$context" apply -f config/kind/clickhouse.yaml
+  kubectl --context "$context" rollout status --timeout=180s --namespace cloud-cost deployment/clickhouse
+  kubectl --context "$context" exec -i --namespace cloud-cost deployment/clickhouse -- \
+    sh -c 'clickhouse-client --user="$CLICKHOUSE_USER" --password="$CLICKHOUSE_PASSWORD" --database="$CLICKHOUSE_DB" --multiquery' \
+    < config/storage/clickhouse/cost_records.sql
+  bash scripts/kind/assert-cloudaccount-missing-secret.sh
+  bash scripts/kind/assert-collector-cronjob.sh
+  COLLECTOR_JOB_NAME=kind-fixture-collector-replay bash scripts/kind/assert-collector-cronjob.sh
+  bash scripts/kind/assert-clickhouse-storage.sh
   exit
 fi
 
