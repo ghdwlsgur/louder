@@ -156,3 +156,4 @@ kubectl --context "$context" exec \
 unset access_key_id secret_access_key
 
 bash scripts/kind/assert-vault-eso-secret-flow.sh
+bash scripts/kind/run-vault-outage-scenario.sh

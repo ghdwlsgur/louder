@@ -282,7 +282,7 @@ Recommended assertions:
 
 Use a disposable Kubernetes cluster such as `kind`.
 
-The local `make kind-e2e` smoke test deploys the Operator into a disposable kind cluster and verifies CloudAccount reconciliation against the real Kubernetes API server. It does not call a CSP or exercise the production secret flow. `make kind-e2e-secrets` separately starts a disposable Vault dev server and External Secrets Operator, then verifies Vault -> ESO -> Kubernetes Secret -> CloudAccount credential readiness. It uses runtime-generated synthetic values and requires Docker, kind, kubectl, Helm, and OpenSSL; it never calls a CSP. The full Kubernetes E2E suite must still cover the production-style secret path; the smoke test is not a replacement for that coverage.
+The local `make kind-e2e` smoke test deploys the Operator into a disposable kind cluster and verifies CloudAccount reconciliation against the real Kubernetes API server. It does not call a CSP or exercise the production secret flow. `make kind-e2e-secrets` separately starts a disposable Vault dev server and External Secrets Operator, then verifies Vault -> ESO -> Kubernetes Secret -> CloudAccount credential readiness, missing-path failure, Vault-unavailable failure, and recovery. It uses runtime-generated synthetic values and requires Docker, kind, kubectl, Helm, and OpenSSL; it never calls a CSP. Restarting the dev server clears its in-memory data, so the recovery check reseeds synthetic data and issues a fresh limited ESO token. The full Kubernetes E2E suite must still cover the production secret path; the local test is not a replacement for that coverage.
 
 Target flow:
 
