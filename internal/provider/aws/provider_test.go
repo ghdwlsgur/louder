@@ -61,8 +61,8 @@ func TestCollectCostsQueriesUnblendedDailyAccountTotalsAndAllPages(t *testing.T)
 		t.Errorf("second page token = %v, want %q", client.inputs[1].NextPageToken, firstToken)
 	}
 	want := []provider.RawCostRecord{
-		{Provider: "aws", SourceRecordID: "aws-cost-explorer-123456789012-2026-09-29", BillingScope: request.AccountID, Amount: "12.3400", Currency: "USD", UsageStart: time.Date(2026, time.September, 29, 0, 0, 0, 0, time.UTC), UsageEnd: time.Date(2026, time.September, 30, 0, 0, 0, 0, time.UTC)},
-		{Provider: "aws", SourceRecordID: "aws-cost-explorer-123456789012-2026-09-30", BillingScope: request.AccountID, Amount: "0", Currency: "USD", UsageStart: time.Date(2026, time.September, 30, 0, 0, 0, 0, time.UTC), UsageEnd: time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)},
+		{Provider: "aws", SourceRecordID: "aws-cost-explorer-123456789012-2026-09-29", BillingScope: request.AccountID, CostBasis: provider.CostBasisUnblended, Amount: "12.3400", Currency: "USD", UsageStart: time.Date(2026, time.September, 29, 0, 0, 0, 0, time.UTC), UsageEnd: time.Date(2026, time.September, 30, 0, 0, 0, 0, time.UTC)},
+		{Provider: "aws", SourceRecordID: "aws-cost-explorer-123456789012-2026-09-30", BillingScope: request.AccountID, CostBasis: provider.CostBasisUnblended, Amount: "0", Currency: "USD", UsageStart: time.Date(2026, time.September, 30, 0, 0, 0, 0, time.UTC), UsageEnd: time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)},
 	}
 	if len(records) != len(want) {
 		t.Fatalf("CollectCosts() records = %#v, want %#v", records, want)
@@ -139,6 +139,7 @@ func TestCostExplorerProviderContract(t *testing.T) {
 		Provider:       "aws",
 		SourceRecordID: "aws-cost-explorer-123456789012-2026-09-29",
 		BillingScope:   request.AccountID,
+		CostBasis:      provider.CostBasisUnblended,
 		Amount:         "3.21",
 		Currency:       "USD",
 		UsageStart:     request.StartTime,

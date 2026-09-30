@@ -12,10 +12,15 @@ type CollectRequest struct {
 	CollectionID string
 }
 
+type CostBasis string
+
+const CostBasisUnblended CostBasis = "unblended_cost"
+
 type RawCostRecord struct {
 	Provider       string    `json:"provider"`
 	SourceRecordID string    `json:"sourceRecordId"`
 	BillingScope   string    `json:"billingScope"`
+	CostBasis      CostBasis `json:"costBasis,omitempty"`
 	Amount         string    `json:"amount"`
 	Currency       string    `json:"currency"`
 	UsageStart     time.Time `json:"usageStart"`
