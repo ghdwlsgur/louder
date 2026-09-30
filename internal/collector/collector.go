@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/ghdwlsgur/louder/internal/provider"
 )
@@ -42,6 +43,45 @@ func Run(ctx context.Context, providerName, accountID, fixtureName string, outpu
 		return fmt.Errorf("decode embedded fixture: %w", err)
 	}
 
+	return encodeRecords(output, records)
+}
+
+func RunWithRegistry(ctx context.Context, registry *provider.Registry, providerName, accountID string, now time.Time, output io.Writer) error {
+	if providerName == "" || accountID == "" || registry == nil || output == nil {
+		return fmt.Errorf("provider registry, provider, account ID, and output are required")
+	}
+	cloudProvider, err := registry.Resolve(providerName)
+	if err != nil {
+		return err
+	}
+	start, end := PreviousCompleteUTCDay(now)
+	request := provider.CollectRequest{
+		AccountID:    accountID,
+		StartTime:    start,
+		EndTime:      end,
+		CollectionID: providerName + ":" + accountID + ":" + start.Format("2006-01-02"),
+	}
+	return RunProvider(ctx, cloudProvider, request, output)
+}
+
+func RunProvider(ctx context.Context, cloudProvider provider.Provider, request provider.CollectRequest, output io.Writer) error {
+	if cloudProvider == nil || output == nil {
+		return fmt.Errorf("provider and output are required")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := cloudProvider.ValidateCredentials(ctx); err != nil {
+		return err
+	}
+	records, err := cloudProvider.CollectCosts(ctx, request)
+	if err != nil {
+		return err
+	}
+	return encodeRecords(output, records)
+}
+
+func encodeRecords(output io.Writer, records []provider.RawCostRecord) error {
 	encoder := json.NewEncoder(output)
 	for _, record := range records {
 		if err := encoder.Encode(record); err != nil {

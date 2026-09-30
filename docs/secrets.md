@@ -51,16 +51,20 @@ spec:
     name: aws-finops-prod
 
   data:
-    - secretKey: access-key-id
+    - secretKey: AWS_ACCESS_KEY_ID
       remoteRef:
         key: kv/finops/aws/prod
         property: access_key_id
 
-    - secretKey: secret-access-key
+    - secretKey: AWS_SECRET_ACCESS_KEY
       remoteRef:
         key: kv/finops/aws/prod
         property: secret_access_key
+
+    # Add AWS_SESSION_TOKEN when the selected access key is temporary.
 ```
+
+The Collector passes this Secret through `envFrom`, so AWS credential keys must use the AWS SDK environment variable names. The AWS Cost Explorer adapter needs only the read-only `ce:GetCostAndUsage` action. It uses the SDK default credential chain and does not read Vault directly.
 
 ---
 

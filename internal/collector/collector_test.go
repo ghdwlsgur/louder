@@ -5,9 +5,50 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/ghdwlsgur/louder/internal/provider"
 )
+
+func TestPreviousCompleteUTCDay(t *testing.T) {
+	now := time.Date(2026, time.October, 1, 3, 15, 0, 0, time.FixedZone("UTC-7", -7*60*60))
+	start, end := PreviousCompleteUTCDay(now)
+	wantStart := time.Date(2026, time.September, 30, 0, 0, 0, 0, time.UTC)
+	wantEnd := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
+	if !start.Equal(wantStart) || !end.Equal(wantEnd) {
+		t.Fatalf("PreviousCompleteUTCDay() = (%s, %s), want (%s, %s)", start, end, wantStart, wantEnd)
+	}
+}
+
+func TestRunWithRegistryCollectsPreviousCompleteUTCDay(t *testing.T) {
+	fake := &collectorTestProvider{records: []provider.RawCostRecord{{
+		Provider:       "aws",
+		SourceRecordID: "aws-cost-explorer-123456789012-2026-09-30",
+		BillingScope:   "123456789012",
+		Amount:         "12.34",
+		Currency:       "USD",
+	}}}
+	registry := provider.NewRegistry()
+	if err := registry.Register("aws", func() (provider.Provider, error) { return fake, nil }); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, time.October, 1, 3, 15, 0, 0, time.FixedZone("UTC-7", -7*60*60))
+	var output bytes.Buffer
+	if err := RunWithRegistry(context.Background(), registry, "aws", "123456789012", now, &output); err != nil {
+		t.Fatalf("RunWithRegistry() error = %v", err)
+	}
+	wantStart := time.Date(2026, time.September, 30, 0, 0, 0, 0, time.UTC)
+	wantEnd := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
+	if fake.request.AccountID != "123456789012" || !fake.request.StartTime.Equal(wantStart) || !fake.request.EndTime.Equal(wantEnd) {
+		t.Errorf("CollectRequest = %#v, want account and previous complete UTC day", fake.request)
+	}
+	if !fake.validated || !fake.collected {
+		t.Errorf("provider calls: validated=%t collected=%t, want both true", fake.validated, fake.collected)
+	}
+	if output.Len() == 0 || output.Bytes()[output.Len()-1] != '\n' {
+		t.Errorf("output = %q, want JSON Lines record", output.String())
+	}
+}
 
 func TestRunEmitsFixtureRecordsAsJSONLines(t *testing.T) {
 	var output bytes.Buffer
@@ -65,4 +106,28 @@ func TestDecodeFixtureRejectsMalformedJSON(t *testing.T) {
 	if _, err := decodeFixture([]byte(`[{"provider":`), "aws", "synthetic-account"); err == nil {
 		t.Fatal("decodeFixture() error = nil for malformed JSON")
 	}
+}
+
+type collectorTestProvider struct {
+	validated   bool
+	collected   bool
+	validateErr error
+	collectErr  error
+	request     provider.CollectRequest
+	records     []provider.RawCostRecord
+}
+
+func (p *collectorTestProvider) ValidateCredentials(context.Context) error {
+	p.validated = true
+	return p.validateErr
+}
+
+func (p *collectorTestProvider) CollectCosts(_ context.Context, request provider.CollectRequest) ([]provider.RawCostRecord, error) {
+	p.collected = true
+	p.request = request
+	return p.records, p.collectErr
+}
+
+func (*collectorTestProvider) Metadata(context.Context) provider.ProviderMetadata {
+	return provider.ProviderMetadata{Name: "aws"}
 }
