@@ -39,11 +39,11 @@ kubectl --context "$context" wait \
 access_key_id=$(kubectl --context "$context" get \
   -n "$namespace" \
   secret/aws-kind-e2e-credentials \
-  -o jsonpath='{.data.access-key-id}')
+  -o jsonpath='{.data.AWS_ACCESS_KEY_ID}')
 secret_access_key=$(kubectl --context "$context" get \
   -n "$namespace" \
   secret/aws-kind-e2e-credentials \
-  -o jsonpath='{.data.secret-access-key}')
+  -o jsonpath='{.data.AWS_SECRET_ACCESS_KEY}')
 
 if [[ -z "$access_key_id" || -z "$secret_access_key" ]]; then
   printf 'ESO did not create both expected credential keys\n' >&2

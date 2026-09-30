@@ -51,6 +51,8 @@ Provider implementations are responsible for:
 - provider-specific raw response interpretation
 - provider-specific source identifiers
 
+The initial AWS adapter uses Cost Explorer `GetCostAndUsage` with `DAILY` granularity and `UnblendedCost`, filtered to one linked account. It maps one account total per day into the existing raw record shape and does not provide service or resource breakdowns. The collector uses a UTC date interval with an inclusive start and exclusive end; the default live run requests the previous complete UTC day.
+
 Provider implementations are not responsible for:
 
 - Teams formatting

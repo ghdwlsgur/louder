@@ -76,6 +76,8 @@ Never store:
 
 The fixture transport should emulate provider behavior where practical.
 
+The AWS live adapter currently queries Cost Explorer `GetCostAndUsage` for daily account totals using `UnblendedCost`. Unit tests use an SDK client double and synthetic responses; kind E2E stays offline and does not require AWS credentials. The live collector defaults to the previous complete UTC day. Cost Explorer data can be refreshed later, so this first pass does not backfill revised days.
+
 A developer should be able to run something conceptually like:
 
 ```bash
