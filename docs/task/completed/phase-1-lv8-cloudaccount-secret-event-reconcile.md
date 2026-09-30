@@ -1,6 +1,6 @@
 # Phase 1 · LV8 — Reconcile CloudAccount When Credential Secret Changes
 
-> Status: pending (2026-09-30)
+> Status: completed (2026-09-30)
 > Scope: Reconcile a CloudAccount when its referenced credential Secret is created, updated, or deleted.
 
 ## Goal
@@ -50,7 +50,7 @@ Ensure CloudAccount credential readiness follows the referenced Kubernetes Secre
 - [x] Run `make kind-e2e-secrets` and confirm ESO-created Secret transitions the existing account to ready without a spec edit.
 - [x] Update harness documentation and this verification log.
 - [x] Run `make kind-e2e`, Go tests, vet, manifests, formatting, shell syntax, English task-doc scan, and diff checks.
-- [ ] Record PR link, checks, and merge commit before moving this task to `completed`.
+- [x] Record PR link, checks, and merge commit before moving this task to `completed`.
 
 ## Acceptance criteria
 
@@ -77,6 +77,8 @@ Ensure CloudAccount credential readiness follows the referenced Kubernetes Secre
 - `GOCACHE=/tmp/louder-go-build make manifests` — passed.
 - `make fmt-check`, `bash -n scripts/kind/*.sh`, the task-doc English scan, and `git diff --check` — passed.
 - The Secret informer uses metadata-only objects and the Role grants only namespaced `get`, `list`, and `watch`; credential values are not cached for event mapping.
+- Implementation PR: [#5 Reconcile CloudAccount on credential Secret events](https://github.com/ghdwlsgur/louder/pull/5) — merged into `main` at `a453b8b5b0c885155551768d7265d2bd13477d6e` on 2026-09-30.
+- GitGuardian Security Checks passed. The PR was merged with the regular merge method and no administrative bypass.
 
 ## Risks and open questions
 
