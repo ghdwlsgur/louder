@@ -13,13 +13,13 @@ type CollectRequest struct {
 }
 
 type RawCostRecord struct {
-	Provider       string
-	SourceRecordID string
-	BillingScope   string
-	Amount         string
-	Currency       string
-	UsageStart     time.Time
-	UsageEnd       time.Time
+	Provider       string    `json:"provider"`
+	SourceRecordID string    `json:"sourceRecordId"`
+	BillingScope   string    `json:"billingScope"`
+	Amount         string    `json:"amount"`
+	Currency       string    `json:"currency"`
+	UsageStart     time.Time `json:"usageStart"`
+	UsageEnd       time.Time `json:"usageEnd"`
 }
 
 type ProviderMetadata struct {
