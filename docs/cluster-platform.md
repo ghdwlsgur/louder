@@ -12,11 +12,13 @@ Before real deployment, re-check current state:
 python3 scripts/check_cluster.py --context innogrid-core-sre
 ```
 
-Every direct kubectl command must explicitly include:
+Every direct kubectl command targeting this shared platform must explicitly include:
 
 ```bash
 --context innogrid-core-sre
 ```
+
+Disposable local tests may use their explicit kind context (for example, `--context kind-louder-e2e`). Do not use a production context for local E2E work or omit `--context` from kubectl commands.
 
 ---
 

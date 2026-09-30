@@ -160,7 +160,8 @@ Before modifying deployment manifests, read:
 Important platform constraints include:
 
 - target context is `innogrid-core-sre`
-- every direct `kubectl` command must specify `--context innogrid-core-sre`
+- every direct `kubectl` command targeting the shared platform must specify `--context innogrid-core-sre`
+- disposable local Kubernetes tests must specify their explicit kind context (for example, `--context kind-louder-e2e`) and must not target a shared cluster
 - Cinder-backed workloads must be pinned to `topology.kubernetes.io/zone=incheon`
 - physical-host HA on on-prem workers may require `sre-core/host-ip`
 - `ServiceMonitor`, `PodMonitor`, and `PrometheusRule` require `release: monitoring`
@@ -450,6 +451,16 @@ When repository mutation matters, follow the exact scope of the user's instructi
 ---
 
 # Agent Operating Rules
+
+## Task planning and history
+
+Every implementation task must have a concrete plan under `docs/task/pending/` before implementation starts. Write all plans and history files under `docs/task/` in English. Read `docs/task/README.md` for the file format and lifecycle.
+
+Name plans `phase-{major}-lv{minor}-{short-description}.md`. The major phase groups a broad project stage; the level numbers sequence smaller tasks within that phase. Check all three status directories before choosing the next unused level. Do not reuse or overwrite a task file.
+
+Move the plan from `pending/` to `activate/` when implementation begins. Keep its scope, decisions, completion checklist, and verification record current. Move it to `completed/` only after the planned work and its verification are finished; record commands and results, including checks not run. Keep task history in `docs/task` rather than deleting old plans.
+
+For code implementation, use TDD in vertical slices: write one behavior test first, observe it fail (RED), add the minimum implementation, then verify it passes (GREEN) before refactoring or starting the next behavior. Do not batch all tests ahead of implementation. For documentation-only changes, record an appropriate non-test verification instead. The detailed workflow is in [skills/louder-tdd/SKILL.md](skills/louder-tdd/SKILL.md). Codex's user-level skill discovery link is a workstation-local setup and is not part of this repository.
 
 1. Read the relevant referenced docs before modifying a subsystem.
 2. Preserve architecture boundaries.

@@ -4,7 +4,7 @@
 
 The test harness is a first-class part of the Multi-Cloud Cost Platform.
 
-Eight CSP integrations create significant maintenance risk if correctness depends on manual tests against live accounts.
+The platform targets eight CSP integrations, which create significant maintenance risk if correctness depends on manual tests against live accounts. The initial provider rollout covers AWS, GCP, and Azure; the remaining providers should use the same harness as they are added.
 
 The harness must allow developers and CI to verify:
 
@@ -41,7 +41,7 @@ These layers serve different purposes and must not be collapsed into one large E
 
 ## 3. Provider fixture harness
 
-Each CSP must have sanitized representative API/export responses.
+Each implemented CSP must have sanitized representative API/export responses. The initial fixture set covers AWS, GCP, and Azure; add fixtures for each subsequent CSP as it is implemented.
 
 Suggested layout:
 
@@ -90,7 +90,7 @@ or equivalent test-only wiring.
 
 ## 4. Provider contract tests
 
-Every provider must pass the same behavioral contract.
+Every implemented provider must pass the same behavioral contract. AWS, GCP, and Azure are the initial providers; subsequent CSPs must pass the same contract before they are considered complete.
 
 Required cases:
 
@@ -183,7 +183,7 @@ A normalization change must update tests intentionally.
 
 ## 6. Analyzer tests
 
-Analyzer tests must operate entirely on normalized data.
+Analyzer tests must operate entirely on normalized data. They verify notification intent through `FakeNotifier`; notifier behavior is covered within analyzer and integration tests rather than as a separate harness layer.
 
 Do not call live provider APIs.
 
@@ -215,9 +215,9 @@ Tests should verify notification intent, not Teams delivery.
 
 ---
 
-## 7. Notifier test harness
+## 7. Notifier coverage
 
-Notifier must be abstracted.
+Notifier must be abstracted so analyzer and integration tests can verify notification intent without sending real Teams messages. Notifier coverage is part of those test layers, not a separate harness layer.
 
 Required implementations:
 
@@ -241,7 +241,7 @@ Example conceptual payload:
 }
 ```
 
-Unit and analyzer tests must not send real Teams messages.
+Unit and analyzer tests must not send real Teams messages. They use `FakeNotifier` to assert notification intent and payload.
 
 A Teams integration test may target a disposable fake HTTP endpoint or dedicated test flow.
 
@@ -281,6 +281,8 @@ Recommended assertions:
 ## 9. Kubernetes E2E
 
 Use a disposable Kubernetes cluster such as `kind`.
+
+The local `make kind-e2e` smoke test deploys the Operator into a disposable kind cluster and verifies CloudAccount reconciliation against the real Kubernetes API server. It does not call a CSP or exercise the production secret flow. The full Kubernetes E2E suite must still cover Vault -> ESO -> Kubernetes Secret -> workload; the local smoke test is not a replacement for that coverage.
 
 Target flow:
 
@@ -504,6 +506,8 @@ Avoid requiring developers to remember long command sequences.
 [ ] Teams failure is injected
 [ ] stale-data condition is tested
 ```
+
+The initial provider completion criteria cover AWS, GCP, and Azure. As additional CSPs are implemented, each must pass the same provider contract before it is considered complete.
 
 ---
 

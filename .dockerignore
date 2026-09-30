@@ -1,0 +1,12 @@
+.git
+.agents
+.github
+.idea
+.vscode
+assets
+bin
+config
+coverage.out
+coverage.html
+docs
+skills
