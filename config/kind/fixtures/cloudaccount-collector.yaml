@@ -1,0 +1,13 @@
+apiVersion: finops.sre.local/v1alpha1
+kind: CloudAccount
+metadata:
+  name: kind-fixture-collector
+  namespace: cloud-cost
+spec:
+  provider: aws
+  accountId: synthetic-kind-account
+  credentialRef:
+    name: kind-fixture-credentials
+  collection:
+    enabled: true
+    schedule: "0 0 * * *"

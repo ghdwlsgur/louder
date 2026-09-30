@@ -70,6 +70,7 @@ kubectl --context "$context" rollout status \
 
 if [[ "$mode" == smoke ]]; then
   bash scripts/kind/assert-cloudaccount-missing-secret.sh
+  bash scripts/kind/assert-collector-cronjob.sh
   exit
 fi
 

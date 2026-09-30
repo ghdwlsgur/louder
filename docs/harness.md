@@ -282,7 +282,7 @@ Recommended assertions:
 
 Use a disposable Kubernetes cluster such as `kind`.
 
-The local `make kind-e2e` smoke test deploys the Operator into a disposable kind cluster and verifies CloudAccount reconciliation against the real Kubernetes API server. It does not call a CSP or exercise the production secret flow. `make kind-e2e-secrets` separately starts a disposable Vault dev server and External Secrets Operator, then verifies Vault -> ESO -> Kubernetes Secret -> CloudAccount credential readiness, missing-path failure, Vault-unavailable failure, and recovery. It uses runtime-generated synthetic values and requires Docker, kind, kubectl, Helm, and OpenSSL; it never calls a CSP. Restarting the dev server clears its in-memory data, so the recovery check reseeds synthetic data and issues a fresh limited ESO token. The full Kubernetes E2E suite must still cover the production secret path; the local test is not a replacement for that coverage.
+The local `make kind-e2e` smoke test deploys the Operator into a disposable kind cluster and verifies CloudAccount reconciliation against the real Kubernetes API server. It also creates a fixture-backed Collector CronJob, launches a Job from it, and checks the synthetic JSON Lines output. The fixture runner does not call a CSP, authenticate with the mounted credentials, normalize data, or write to ClickHouse; a successful fixture Job is only proof that the Kubernetes execution path works. `make kind-e2e-secrets` separately starts a disposable Vault dev server and External Secrets Operator, then verifies Vault -> ESO -> Kubernetes Secret -> CloudAccount credential readiness, missing-path failure, Vault-unavailable failure, and recovery. It uses runtime-generated synthetic values and requires Docker, kind, kubectl, Helm, and OpenSSL; it never calls a CSP. Restarting the dev server clears its in-memory data, so the recovery check reseeds synthetic data and issues a fresh limited ESO token. The full Kubernetes E2E suite must still cover the production secret path; the local test is not a replacement for that coverage.
 
 Target flow:
 
@@ -320,20 +320,22 @@ Operator reconcile
 Collector CronJob / Job
        │
        ▼
-fixture / fake provider
+embedded fixture Collector
        │
        ▼
-ClickHouse
-       │
-       ▼
-Analyzer
-       │
-       ▼
-Fake Teams endpoint
-       │
-       ▼
-assert expected state
+assert JSON Lines output
 ```
+
+The current Collector executable is a fixture runner for AWS, GCP, and Azure. Synthetic fixture execution is opt-in through the Operator's `--collector-fixture-mode` flag; it is enabled only by the local kind configuration. It proves scheduling, credential Secret reference wiring, image startup, and output encoding only. Without fixture mode the Collector fails explicitly because live provider API adapters are not implemented. Provider API adapters, normalization, ClickHouse ingestion, Analyzer, and Notifier are not yet exercised by this local flow.
+
+The local targets cover distinct slices:
+
+| Target | Verified behavior |
+|---|---|
+| `make kind-e2e` | CloudAccount missing-Secret status, CronJob creation, and a completed fixture Collector Job |
+| `make kind-e2e-secrets` | Vault -> ESO -> Secret -> CloudAccount readiness and Vault failure/recovery; its CloudAccount keeps collection disabled |
+
+Neither target yet verifies a production billing API or a single combined Vault/ESO/Collector/ClickHouse flow.
 
 The E2E suite must exercise the actual production-style secret path:
 
@@ -504,7 +506,7 @@ Avoid requiring developers to remember long command sequences.
 [ ] ESO is used in E2E
 [ ] ExternalSecret -> K8s Secret flow is asserted
 [ ] Operator reconciliation is asserted
-[ ] Collector Job/CronJob creation is asserted
+[x] Collector CronJob creation and fixture Job execution are asserted by `make kind-e2e`
 [ ] idempotent re-ingestion is asserted
 [ ] at least one provider failure is injected
 [ ] ClickHouse failure is injected

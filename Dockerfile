@@ -16,10 +16,13 @@ COPY internal/ ./internal/
 
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags="-s -w" -o /out/louder-operator ./cmd/operator
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" -o /out/louder-collector ./cmd/collector
 
 FROM gcr.io/distroless/static:nonroot
 
 COPY --from=build /out/louder-operator /louder-operator
+COPY --from=build /out/louder-collector /louder-collector
 
 USER 65532:65532
 EXPOSE 8080 8081

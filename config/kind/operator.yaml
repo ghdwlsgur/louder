@@ -40,6 +40,17 @@ rules:
       - get
       - list
       - watch
+  - apiGroups:
+      - batch
+    resources:
+      - cronjobs
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -87,6 +98,8 @@ spec:
           args:
             - --watch-namespace=cloud-cost
             - --metrics-bind-address=0
+            - --collector-image=louder-operator:local
+            - --collector-fixture-mode=true
           ports:
             - name: health
               containerPort: 8081
