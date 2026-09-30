@@ -108,6 +108,7 @@ spec:
             - --metrics-bind-address=0
             - --collector-image=louder-operator:local
             - --collector-fixture-mode=true
+            - --collector-storage-secret-name=louder-clickhouse-credentials
           ports:
             - name: health
               containerPort: 8081

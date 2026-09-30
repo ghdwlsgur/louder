@@ -5,7 +5,7 @@ context="kind-${KIND_CLUSTER_NAME:-louder-e2e}"
 namespace=cloud-cost
 account=kind-fixture-collector
 cronjob="$account-collector"
-job=kind-fixture-collector-run
+job="${COLLECTOR_JOB_NAME:-kind-fixture-collector-run}"
 synthetic_secret_value=synthetic-fixture-only
 
 kubectl --context "$context" create secret generic kind-fixture-credentials \

@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
+	"github.com/ghdwlsgur/louder/internal/normalize"
 	"github.com/ghdwlsgur/louder/internal/provider"
 )
 
@@ -68,6 +70,45 @@ func TestRunEmitsFixtureRecordsAsJSONLines(t *testing.T) {
 	}
 }
 
+func TestRunWithStoragePersistsNormalizedAWSFixture(t *testing.T) {
+	storage := &collectorTestWriter{}
+	var output bytes.Buffer
+	if err := RunWithStorage(context.Background(), "aws", "synthetic-account", "embedded:aws", &output, storage); err != nil {
+		t.Fatalf("RunWithStorage() error = %v", err)
+	}
+	if len(storage.records) != 1 {
+		t.Fatalf("stored records = %#v, want one normalized record", storage.records)
+	}
+	want := normalize.CostRecord{
+		Provider:         "aws",
+		BillingAccountID: "synthetic-account",
+		SourceRecordID:   "fixture-aws-001",
+		CostBasis:        provider.CostBasisUnblended,
+		Amount:           "12.34",
+		Currency:         "USD",
+		UsageStart:       time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
+		UsageEnd:         time.Date(2026, time.January, 2, 0, 0, 0, 0, time.UTC),
+	}
+	if storage.records[0] != want {
+		t.Errorf("stored record = %#v, want %#v", storage.records[0], want)
+	}
+	if !bytes.Contains(output.Bytes(), []byte(`"sourceRecordId":"fixture-aws-001"`)) {
+		t.Errorf("stdout = %q, want raw JSON Lines output", output.String())
+	}
+}
+
+func TestRunWithStorageDoesNotEmitRawRecordsWhenStorageFails(t *testing.T) {
+	storage := &collectorTestWriter{err: errors.New("storage unavailable")}
+	var output bytes.Buffer
+	err := RunWithStorage(context.Background(), "aws", "synthetic-account", "embedded:aws", &output, storage)
+	if err == nil {
+		t.Fatal("RunWithStorage() error = nil, want storage error")
+	}
+	if output.Len() != 0 {
+		t.Errorf("stdout = %q, want no records when persistence fails", output.String())
+	}
+}
+
 func TestRunRejectsFixtureForDifferentProvider(t *testing.T) {
 	var output bytes.Buffer
 	if err := Run(context.Background(), "aws", "synthetic-account", "embedded:gcp", &output); err == nil {
@@ -115,6 +156,16 @@ type collectorTestProvider struct {
 	collectErr  error
 	request     provider.CollectRequest
 	records     []provider.RawCostRecord
+}
+
+type collectorTestWriter struct {
+	records []normalize.CostRecord
+	err     error
+}
+
+func (w *collectorTestWriter) WriteCosts(_ context.Context, records []normalize.CostRecord) error {
+	w.records = append(w.records, records...)
+	return w.err
 }
 
 func (p *collectorTestProvider) ValidateCredentials(context.Context) error {

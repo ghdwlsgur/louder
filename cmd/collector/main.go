@@ -11,6 +11,7 @@ import (
 	"github.com/ghdwlsgur/louder/internal/collector"
 	"github.com/ghdwlsgur/louder/internal/provider"
 	awsprovider "github.com/ghdwlsgur/louder/internal/provider/aws"
+	"github.com/ghdwlsgur/louder/internal/storage/clickhouse"
 )
 
 func main() {
@@ -24,7 +25,18 @@ func main() {
 
 	ctx := context.Background()
 	if fixtureName != "" {
-		if err := collector.Run(ctx, providerName, accountID, fixtureName, os.Stdout); err != nil {
+		var err error
+		if storageConfigured() {
+			var store *clickhouse.Store
+			store, err = clickhouse.OpenFromEnv(ctx)
+			if err == nil {
+				defer store.Close()
+				err = collector.RunWithStorage(ctx, providerName, accountID, fixtureName, os.Stdout, store)
+			}
+		} else {
+			err = collector.Run(ctx, providerName, accountID, fixtureName, os.Stdout)
+		}
+		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
@@ -37,6 +49,11 @@ func main() {
 }
 
 func runLive(ctx context.Context, providerName, accountID string, now time.Time, output *os.File) error {
+	store, err := clickhouse.OpenFromEnv(ctx)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
 	awsConfig, err := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
 	if err != nil {
 		return fmt.Errorf("load AWS SDK configuration: %w", err)
@@ -47,5 +64,14 @@ func runLive(ctx context.Context, providerName, accountID string, now time.Time,
 	}); err != nil {
 		return err
 	}
-	return collector.RunWithRegistry(ctx, registry, providerName, accountID, now, output)
+	return collector.RunWithRegistryAndStorage(ctx, registry, providerName, accountID, now, output, store)
+}
+
+func storageConfigured() bool {
+	for _, name := range []string{"CLICKHOUSE_ADDR", "CLICKHOUSE_DATABASE", "CLICKHOUSE_USERNAME", "CLICKHOUSE_PASSWORD", "CLICKHOUSE_SECURE"} {
+		if os.Getenv(name) != "" {
+			return true
+		}
+	}
+	return false
 }

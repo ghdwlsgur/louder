@@ -95,7 +95,7 @@ func TestReconcileCreatesCollectorCronJob(t *testing.T) {
 		Data:       map[string][]byte{"access-key": []byte("synthetic-secret")},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(account).WithObjects(account, secret).Build()
-	r := &CloudAccountReconciler{Client: c, CollectorImage: "louder:local", CollectorFixtureMode: true, Scheme: scheme}
+	r := &CloudAccountReconciler{Client: c, CollectorImage: "louder:local", CollectorFixtureMode: true, CollectorStorageSecretName: "clickhouse-credentials", Scheme: scheme}
 	request := reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "costs", Name: "aws-prod"}}
 	if _, err := r.Reconcile(context.Background(), request); err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
@@ -118,13 +118,16 @@ func TestReconcileCreatesCollectorCronJob(t *testing.T) {
 		t.Errorf("owner references = %#v, want CloudAccount UID %q", actual.OwnerReferences, account.UID)
 	}
 	container := actual.Spec.JobTemplate.Spec.Template.Spec.Containers[0]
+	if len(container.EnvFrom) != 2 || container.EnvFrom[1].SecretRef == nil || container.EnvFrom[1].SecretRef.Name != "clickhouse-credentials" || container.EnvFrom[1].SecretRef.Optional == nil || !*container.EnvFrom[1].SecretRef.Optional {
+		t.Errorf("storage Secret envFrom = %#v, want optional clickhouse-credentials Secret", container.EnvFrom)
+	}
 	if actual.Spec.JobTemplate.Spec.Template.Spec.AutomountServiceAccountToken == nil || *actual.Spec.JobTemplate.Spec.Template.Spec.AutomountServiceAccountToken {
 		t.Error("Collector pod should not receive a Kubernetes API token")
 	}
 	if container.Image != "louder:local" {
 		t.Errorf("collector image = %q, want louder:local", container.Image)
 	}
-	if len(container.EnvFrom) != 1 || container.EnvFrom[0].SecretRef == nil || container.EnvFrom[0].SecretRef.Name != secret.Name {
+	if len(container.EnvFrom) < 1 || container.EnvFrom[0].SecretRef == nil || container.EnvFrom[0].SecretRef.Name != secret.Name {
 		t.Errorf("credential Secret reference = %#v, want reference to %q", container.EnvFrom, secret.Name)
 	}
 	if len(container.Env) != 0 {
@@ -195,7 +198,7 @@ func TestReconcileRemovesCollectorCronJobWhenCollectionDisabled(t *testing.T) {
 		},
 	}
 	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "aws-prod-credentials", Namespace: "costs"}}
-	cronJob := collectorCronJob(account, "louder:local", true)
+	cronJob := collectorCronJob(account, "louder:local", true, "")
 	if err := controllerutil.SetControllerReference(account, cronJob, scheme); err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +325,7 @@ func TestReconcileReportsCollectorJobSuccess(t *testing.T) {
 		},
 	}
 	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: account.Spec.CredentialRef.Name, Namespace: account.Namespace}}
-	cronJob := collectorCronJob(account, "louder:local", true)
+	cronJob := collectorCronJob(account, "louder:local", true, "")
 	cronJob.UID = types.UID("cronjob-uid")
 	if err := controllerutil.SetControllerReference(account, cronJob, scheme); err != nil {
 		t.Fatal(err)
@@ -390,7 +393,7 @@ func TestReconcileReportsCollectorJobFailureWithoutLeakingMessage(t *testing.T) 
 		},
 	}
 	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: account.Spec.CredentialRef.Name, Namespace: account.Namespace}}
-	cronJob := collectorCronJob(account, "louder:local", true)
+	cronJob := collectorCronJob(account, "louder:local", true, "")
 	cronJob.UID = types.UID("cronjob-uid")
 	if err := controllerutil.SetControllerReference(account, cronJob, scheme); err != nil {
 		t.Fatal(err)
@@ -452,7 +455,7 @@ func TestReconcileIgnoresCollectorJobWithDifferentCronJobOwner(t *testing.T) {
 		},
 	}
 	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: account.Spec.CredentialRef.Name, Namespace: account.Namespace}}
-	cronJob := collectorCronJob(account, "louder:local", true)
+	cronJob := collectorCronJob(account, "louder:local", true, "")
 	cronJob.UID = types.UID("cronjob-uid")
 	if err := controllerutil.SetControllerReference(account, cronJob, scheme); err != nil {
 		t.Fatal(err)
