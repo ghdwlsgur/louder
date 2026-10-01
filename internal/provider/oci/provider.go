@@ -81,8 +81,8 @@ func (p *Provider) CollectCosts(ctx context.Context, request provider.CollectReq
 	if !tenancyOCIDPattern.MatchString(request.AccountID) {
 		return nil, &provider.ProviderError{Class: provider.ErrorUnsupportedBillingScope}
 	}
-	start, end := request.StartTime.UTC(), request.EndTime.UTC()
-	if !start.Before(end) || !isUTCMidnight(start) || !isUTCMidnight(end) {
+	start, end, validWindow := provider.NormalizeDailyWindow(request.StartTime, request.EndTime)
+	if !validWindow {
 		return nil, &provider.ProviderError{Class: provider.ErrorUnsupportedBillingScope}
 	}
 	items, err := p.query.queryDailyCosts(ctx, usageRequest{tenantID: request.AccountID, start: start, end: end})
@@ -112,10 +112,6 @@ func (p *Provider) CollectCosts(ctx context.Context, request provider.CollectReq
 	}
 	sort.Slice(records, func(i, j int) bool { return records[i].SourceRecordID < records[j].SourceRecordID })
 	return records, nil
-}
-
-func isUTCMidnight(value time.Time) bool {
-	return value.Hour() == 0 && value.Minute() == 0 && value.Second() == 0 && value.Nanosecond() == 0
 }
 
 type ociCredentials struct {
