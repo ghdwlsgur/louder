@@ -6,6 +6,7 @@ context="kind-$cluster_name"
 export KIND_CLUSTER_NAME="$cluster_name"
 image=louder-operator:local
 mode="${1:-smoke}"
+port_forward_pid=""
 
 case "$mode" in
   smoke) ;;
@@ -53,6 +54,10 @@ kind create cluster \
 
 cleanup() {
   status=$?
+  if [[ -n "$port_forward_pid" ]]; then
+    kill "$port_forward_pid" 2>/dev/null || true
+    wait "$port_forward_pid" 2>/dev/null || true
+  fi
   if [[ "$status" -ne 0 && "$mode" == secrets ]]; then
     kubectl --context "$context" get pods --all-namespaces -o wide || true
     kubectl --context "$context" describe deployment vault --namespace vault-system || true
@@ -92,7 +97,6 @@ if [[ "$mode" == storage ]]; then
     --from-literal=CLICKHOUSE_USER=louder \
     --from-literal=CLICKHOUSE_DB=finops \
     --dry-run=client -o yaml | kubectl --context "$context" apply -f -
-  unset clickhouse_password
   kubectl --context "$context" apply -f config/kind/clickhouse.yaml
   kubectl --context "$context" rollout status --timeout=180s --namespace cloud-cost deployment/clickhouse
   kubectl --context "$context" exec -i --namespace cloud-cost deployment/clickhouse -- \
@@ -102,6 +106,27 @@ if [[ "$mode" == storage ]]; then
   bash scripts/kind/assert-collector-cronjob.sh
   COLLECTOR_JOB_NAME=kind-fixture-collector-replay bash scripts/kind/assert-collector-cronjob.sh
   bash scripts/kind/assert-clickhouse-storage.sh
+  port=19000
+  kubectl --context "$context" port-forward --address 127.0.0.1 --namespace cloud-cost service/clickhouse "$port:9000" >/dev/null 2>&1 &
+  port_forward_pid=$!
+  for attempt in $(seq 1 30); do
+    if (echo >"/dev/tcp/127.0.0.1/$port") >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+  if ! (echo >"/dev/tcp/127.0.0.1/$port") >/dev/null 2>&1; then
+    printf 'ClickHouse port-forward did not become ready\n' >&2
+    exit 1
+  fi
+  CLICKHOUSE_INTEGRATION=1 \
+    CLICKHOUSE_ADDR="127.0.0.1:$port" \
+    CLICKHOUSE_DATABASE=finops \
+    CLICKHOUSE_USERNAME=louder \
+    CLICKHOUSE_PASSWORD="$clickhouse_password" \
+    GOCACHE="${GOCACHE:-/tmp/louder-go-build}" \
+    go test ./internal/storage/clickhouse -run TestNativeReaderReturnsNormalizedFinalRecord -count=1
+  unset clickhouse_password
   exit
 fi
 

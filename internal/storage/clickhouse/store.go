@@ -9,20 +9,34 @@ import (
 	"github.com/ghdwlsgur/louder/internal/normalize"
 )
 
-var ErrStorageUnavailable = errors.New("clickhouse storage unavailable")
+var (
+	ErrStorageUnavailable = errors.New("clickhouse storage unavailable")
+	ErrInvalidTimeRange   = errors.New("invalid clickhouse query time range")
+)
 
 type Inserter interface {
 	InsertBatch(context.Context, []normalize.CostRecord, time.Time) error
 	Close() error
 }
 
+type AccountScope struct {
+	Provider         string
+	BillingAccountID string
+}
+
+type Reader interface {
+	ReadCosts(context.Context, []AccountScope, time.Time, time.Time) ([]normalize.CostRecord, error)
+}
+
 type Store struct {
 	inserter Inserter
+	reader   Reader
 	now      func() time.Time
 }
 
 func New(inserter Inserter, now func() time.Time) *Store {
-	return &Store{inserter: inserter, now: now}
+	reader, _ := inserter.(Reader)
+	return &Store{inserter: inserter, reader: reader, now: now}
 }
 
 func (s *Store) WriteCosts(ctx context.Context, records []normalize.CostRecord) error {
@@ -39,6 +53,26 @@ func (s *Store) WriteCosts(ctx context.Context, records []normalize.CostRecord) 
 		return fmt.Errorf("%w", ErrStorageUnavailable)
 	}
 	return nil
+}
+
+func (s *Store) ReadCosts(ctx context.Context, accounts []AccountScope, start, end time.Time) ([]normalize.CostRecord, error) {
+	if len(accounts) == 0 {
+		return []normalize.CostRecord{}, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if start.IsZero() || end.IsZero() || !start.Before(end) {
+		return nil, ErrInvalidTimeRange
+	}
+	if s.reader == nil {
+		return nil, ErrStorageUnavailable
+	}
+	records, err := s.reader.ReadCosts(ctx, accounts, start.UTC(), end.UTC())
+	if err != nil {
+		return nil, ErrStorageUnavailable
+	}
+	return records, nil
 }
 
 func (s *Store) Close() error {

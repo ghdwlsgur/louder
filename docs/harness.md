@@ -322,7 +322,7 @@ embedded fixture Collector
 assert JSON Lines output
 ```
 
-The Collector has an AWS Cost Explorer adapter for daily account-level `UnblendedCost` totals. Its unit and provider contract tests use a synthetic SDK client; the local kind flow stays offline and runs embedded fixtures for AWS, GCP, and Azure. `make kind-e2e-storage` additionally starts an ephemeral ClickHouse instance, applies the checked-in schema, runs the AWS fixture twice, and checks that `FINAL` returns one logical row. This verifies normalization and persistence without CSP access. Analyzer and Notifier are not yet exercised by these local flows.
+The Collector has an AWS Cost Explorer adapter for daily account-level `UnblendedCost` totals. Its unit and provider contract tests use a synthetic SDK client; the local kind flow stays offline and runs embedded fixtures for AWS, GCP, and Azure. `make kind-e2e-storage` additionally starts an ephemeral ClickHouse instance, applies the checked-in schema, runs the AWS fixture twice, checks that `FINAL` returns one logical row, and uses the native Go reader to decode the normalized row. This verifies normalization and persistence without CSP access. Analyzer and Notifier are not yet exercised by these local flows.
 
 The kind E2E scripts default to cluster name `louder-e2e`. Set `KIND_CLUSTER_NAME` to run against a separate disposable cluster, for example `KIND_CLUSTER_NAME=louder-e2e-local make kind-e2e`. A cluster that already has the selected name is never replaced.
 
