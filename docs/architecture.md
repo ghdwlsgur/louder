@@ -488,6 +488,8 @@ StdoutNotifier
 
 Tests must never require a real Teams channel.
 
+The first implementation lives in `internal/notifier`: a fake notifier supports local Analyzer tests, and `TeamsWebhookNotifier` sends Adaptive Cards through a Teams Workflows callback URL. It accepts the callback URL from trusted Secret configuration, requires HTTPS, disables redirects, and returns a stable error without including the URL or remote response body. The notifier is not yet wired to a scheduled Analyzer or `NotificationPolicy` resolver.
+
 ---
 
 ## 10. Repository structure

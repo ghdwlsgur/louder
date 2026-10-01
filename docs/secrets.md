@@ -214,6 +214,8 @@ spec:
 
 The notifier resolves only the Kubernetes Secret.
 
+Store the complete Teams Workflows callback URL as `TEAMS_WEBHOOK_URL` in the referenced Secret. The callback URL contains its authentication material and must be sourced through Vault and External Secrets Operator; never put it in a `NotificationPolicy`, ConfigMap, fixture, or log. The notifier accepts HTTPS URLs only and does not follow redirects. Workflows are associated with their owners, so production setup must assign and maintain an owner who will remain responsible for the workflow.
+
 ---
 
 ## 6. Least privilege
