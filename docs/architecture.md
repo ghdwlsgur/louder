@@ -433,7 +433,7 @@ today - avg_7d > configured_absolute_threshold
 
 The Analyzer consumes normalized cost data only.
 
-The first Analyzer slice provides a pure monthly budget evaluator and storage-backed service functions in `internal/analyzer`. It matches `BudgetPolicy.spec.selector` against `CloudAccount.spec.metadata`, requests the selected provider/account pairs for the current UTC month through the shared `storage.CostReader` interface, sums returned records in the policy currency, and returns intents for each reached percentage threshold. `EvaluateAndNotifyBudget` maps those intents to provider-neutral notifications and sends them through the `Notifier` interface. It does not create a ClickHouse client, run on a schedule, or resolve `NotificationPolicy`; runtime wiring and delivery deduplication remain separate work.
+The Analyzer provides a pure monthly budget evaluator and storage-backed service functions in `internal/analyzer`. It matches `BudgetPolicy.spec.selector` against `CloudAccount.spec.metadata`, requests the selected provider/account pairs for the current UTC month through the shared `storage.CostReader` interface, sums returned records in the policy currency, and returns intents for each reached percentage threshold. `EvaluateAndNotifyBudgetPolicies` intersects those accounts with matching `NotificationPolicy` selectors and event subscriptions, then fans notifications out through a caller-supplied resolver. The resolver boundary keeps Kubernetes Secret access out of Analyzer domain logic. A scheduled Analyzer workload, Kubernetes API/Secret resolver, and delivery deduplication are not implemented yet.
 
 It must not contain CSP API logic.
 
@@ -489,7 +489,7 @@ StdoutNotifier
 
 Tests must never require a real Teams channel.
 
-The first implementation lives in `internal/notifier`: a fake notifier supports local Analyzer tests, and `TeamsWebhookNotifier` sends Adaptive Cards through a Teams Workflows callback URL. It accepts the callback URL from trusted Secret configuration, requires HTTPS, disables redirects, and returns a stable error without including the URL or remote response body. The notifier is not yet wired to a scheduled Analyzer or `NotificationPolicy` resolver.
+The first implementation lives in `internal/notifier`: a fake notifier supports local Analyzer tests, and `TeamsWebhookNotifier` sends Adaptive Cards through a Teams Workflows callback URL. It accepts the callback URL from trusted Secret configuration, requires HTTPS, disables redirects, and returns a stable error without including the URL or remote response body. Analyzer policy fanout accepts resolved Notifier instances through an injected resolver, but no scheduled workload or Kubernetes Secret resolver is wired yet.
 
 ---
 
