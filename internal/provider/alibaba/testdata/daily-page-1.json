@@ -1,0 +1,16 @@
+{
+  "Success": true,
+  "Data": {
+    "AccountID": "1234567890123456",
+    "NextToken": "page-2",
+    "Items": [
+      {
+        "BillingDate": "2026-09-30",
+        "PretaxAmount": 1.25,
+        "Currency": "USD",
+        "Item": "PayAsYouGoBill",
+        "InstanceID": "i-synthetic-1"
+      }
+    ]
+  }
+}

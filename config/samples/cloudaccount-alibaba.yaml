@@ -1,0 +1,13 @@
+apiVersion: finops.sre.local/v1alpha1
+kind: CloudAccount
+metadata:
+  name: alibaba-prod
+  namespace: cloud-cost
+spec:
+  provider: alibaba
+  accountId: "replace-with-alibaba-cloud-account-id"
+  credentialRef:
+    name: alibaba-cost-reader
+  collection:
+    enabled: true
+    schedule: "0 1 * * *"

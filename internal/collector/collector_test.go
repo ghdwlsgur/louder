@@ -271,3 +271,17 @@ func TestRunEmitsIBMBilledCostFixtureAsJSONLines(t *testing.T) {
 		t.Errorf("record = %#v, want IBM billed-cost fixture record", record)
 	}
 }
+
+func TestRunEmitsAlibabaCostFixtureAsJSONLines(t *testing.T) {
+	var output bytes.Buffer
+	if err := Run(context.Background(), "alibaba", "fixture-account", "embedded:alibaba", &output); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	var record provider.RawCostRecord
+	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &record); err != nil {
+		t.Fatalf("output is not a JSON record: %v", err)
+	}
+	if record.Provider != "alibaba" || record.BillingScope != "fixture-account" || record.CostBasis != provider.CostBasisAlibabaPretax || record.SourceRecordID == "" {
+		t.Errorf("record = %#v, want Alibaba pretax-cost fixture record", record)
+	}
+}

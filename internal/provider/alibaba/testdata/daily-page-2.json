@@ -1,0 +1,15 @@
+{
+  "Success": true,
+  "Data": {
+    "AccountID": "1234567890123456",
+    "Items": [
+      {
+        "BillingDate": "2026-09-30",
+        "PretaxAmount": 2.75,
+        "Currency": "USD",
+        "Item": "Refund",
+        "InstanceID": "i-synthetic-2"
+      }
+    ]
+  }
+}

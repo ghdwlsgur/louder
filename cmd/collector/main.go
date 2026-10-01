@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/ghdwlsgur/louder/internal/collector"
 	"github.com/ghdwlsgur/louder/internal/provider"
+	alibabaprovider "github.com/ghdwlsgur/louder/internal/provider/alibaba"
 	awsprovider "github.com/ghdwlsgur/louder/internal/provider/aws"
 	azureprovider "github.com/ghdwlsgur/louder/internal/provider/azure"
 	gcpprovider "github.com/ghdwlsgur/louder/internal/provider/gcp"
@@ -86,6 +87,9 @@ func runLive(ctx context.Context, providerName, accountID string, providerConfig
 		return err
 	}
 	if err := registry.Register("ibm", func() (provider.Provider, error) { return ibmprovider.New(), nil }); err != nil {
+		return err
+	}
+	if err := registry.Register("alibaba", func() (provider.Provider, error) { return alibabaprovider.New(), nil }); err != nil {
 		return err
 	}
 	return collector.RunWithRegistryAndStorage(ctx, registry, providerName, accountID, now, output, store, providerConfig)
