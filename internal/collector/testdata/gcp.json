@@ -3,6 +3,7 @@
     "provider": "gcp",
     "sourceRecordId": "fixture-gcp-001",
     "billingScope": "synthetic",
+    "costBasis": "net_cost",
     "amount": "12.34",
     "currency": "USD",
     "usageStart": "2026-01-01T00:00:00Z",

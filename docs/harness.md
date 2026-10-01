@@ -76,7 +76,7 @@ Never store:
 
 The fixture transport should emulate provider behavior where practical.
 
-The AWS live adapter queries Cost Explorer `GetCostAndUsage` for daily account totals using `UnblendedCost`. Unit tests use an SDK client double and synthetic responses; kind E2E stays offline and does not require AWS credentials. Each live run requests the previous seven complete UTC days and writes stable account-day IDs so ClickHouse can replace revised totals. CloudAccount schedules remain explicit; examples recommend one run per day because each paginated Cost Explorer API request is charged. AWS refreshes data at least every 24 hours, but some upstream data can arrive later, so the lookback is bounded and does not guarantee final values. See [AWS refresh behavior](https://docs.aws.amazon.com/cost-management/latest/userguide/ce-what-is.html) and [API pricing](https://aws.amazon.com/aws-cost-management/aws-cost-explorer/pricing/).
+The AWS live adapter queries Cost Explorer `GetCostAndUsage` for daily account totals using `NetUnblendedCost`. The GCP live adapter queries the Standard BigQuery Billing Export and aggregates `cost + credits` by UTC day and currency. Unit tests use synthetic SDK/query results; kind E2E stays offline and does not require CSP credentials. Each live run requests the previous seven complete UTC days and writes stable account-day IDs so ClickHouse can replace revised totals. CloudAccount schedules remain explicit; examples recommend one run per day. AWS refreshes data at least every 24 hours, but some upstream data can arrive later, so the lookback is bounded and does not guarantee final values. BigQuery export is asynchronous and queries can incur BigQuery charges. See [AWS refresh behavior](https://docs.aws.amazon.com/cost-management/latest/userguide/ce-what-is.html), [AWS API pricing](https://aws.amazon.com/aws-cost-management/aws-cost-explorer/pricing/), and [Google export setup and cost](https://cloud.google.com/billing/docs/how-to/export-data-bigquery-setup).
 
 A developer should be able to run something conceptually like:
 
@@ -162,7 +162,7 @@ testdata/ncp/
 
 Tests compare normalized output against the expected golden file.
 
-The initial golden case normalizes an AWS account-day `UnblendedCost` record and verifies exact amount-string, currency, source ID, and UTC interval preservation. It does not imply that service/resource mapping or currency conversion exists.
+The initial golden case normalizes an AWS account-day `NetUnblendedCost` record and verifies exact amount-string, currency, source ID, and UTC interval preservation. It does not imply that service/resource mapping or currency conversion exists.
 
 Golden tests are especially useful for:
 
@@ -322,7 +322,7 @@ embedded fixture Collector
 assert JSON Lines output
 ```
 
-The Collector has an AWS Cost Explorer adapter for daily account-level `UnblendedCost` totals. Its unit and provider contract tests use a synthetic SDK client; the local kind flow stays offline and runs embedded fixtures for AWS, GCP, and Azure. `make kind-e2e-storage` additionally starts an ephemeral ClickHouse instance, applies the checked-in schema, runs the AWS fixture twice, checks that `FINAL` returns one logical row, and uses the native Go reader to decode the normalized row. It then evaluates the stored row against a synthetic budget and verifies the notification payload through `FakeNotifier`. This verifies the cost-to-notification path without CSP access or a real Teams tenant.
+The Collector has AWS Cost Explorer and GCP BigQuery Billing Export adapters for daily account-level net totals. Their unit and provider contract tests use synthetic SDK/query results; the local kind flow stays offline and runs embedded fixtures for AWS, GCP, and Azure. `make kind-e2e-storage` additionally starts an ephemeral ClickHouse instance, applies the checked-in schema, runs the AWS fixture twice, checks that `FINAL` returns one logical row, and uses the native Go reader to decode the normalized row. It then evaluates the stored row against a synthetic budget and verifies the notification payload through `FakeNotifier`. This verifies the cost-to-notification path without CSP access or a real Teams tenant.
 
 The kind E2E scripts default to cluster name `louder-e2e`. Set `KIND_CLUSTER_NAME` to run against a separate disposable cluster, for example `KIND_CLUSTER_NAME=louder-e2e-local make kind-e2e`. A cluster that already has the selected name is never replaced.
 

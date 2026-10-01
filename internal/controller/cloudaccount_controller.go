@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"sort"
@@ -263,6 +264,10 @@ func collectorCronJob(account *v1alpha1.CloudAccount, image string, fixtureMode 
 	labels := map[string]string{"app.kubernetes.io/name": "louder-collector", "finops.sre.local/cloud-account": accountLabelValue(account.Name)}
 	backoffLimit := int32(2)
 	args := []string{"--provider=" + account.Spec.Provider, "--account-id=" + account.Spec.AccountID}
+	if len(account.Spec.ProviderConfig) > 0 {
+		providerConfig, _ := json.Marshal(account.Spec.ProviderConfig)
+		args = append(args, "--provider-config="+string(providerConfig))
+	}
 	if fixtureMode {
 		args = append(args, "--fixture=embedded:"+account.Spec.Provider)
 	}

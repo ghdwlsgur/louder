@@ -90,6 +90,12 @@ spec:
                 - gcp
                 - azure
                 type: string
+              providerConfig:
+                additionalProperties:
+                  type: string
+                description: ProviderConfig contains non-secret settings interpreted
+                  by the selected provider.
+                type: object
             required:
             - accountId
             - collection

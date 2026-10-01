@@ -69,7 +69,7 @@ func RunWithStorage(ctx context.Context, providerName, accountID, fixtureName st
 	return persistAndEncode(ctx, records, output, storage)
 }
 
-func RunWithRegistry(ctx context.Context, registry *provider.Registry, providerName, accountID string, now time.Time, output io.Writer) error {
+func RunWithRegistry(ctx context.Context, registry *provider.Registry, providerName, accountID string, now time.Time, output io.Writer, providerConfig ...map[string]string) error {
 	if providerName == "" || accountID == "" || registry == nil || output == nil {
 		return fmt.Errorf("provider registry, provider, account ID, and output are required")
 	}
@@ -79,15 +79,16 @@ func RunWithRegistry(ctx context.Context, registry *provider.Registry, providerN
 	}
 	start, end := PreviousSevenCompleteUTCDays(now)
 	request := provider.CollectRequest{
-		AccountID:    accountID,
-		StartTime:    start,
-		EndTime:      end,
-		CollectionID: providerName + ":" + accountID + ":" + start.Format("2006-01-02"),
+		AccountID:      accountID,
+		ProviderConfig: firstProviderConfig(providerConfig),
+		StartTime:      start,
+		EndTime:        end,
+		CollectionID:   providerName + ":" + accountID + ":" + start.Format("2006-01-02"),
 	}
 	return RunProvider(ctx, cloudProvider, request, output)
 }
 
-func RunWithRegistryAndStorage(ctx context.Context, registry *provider.Registry, providerName, accountID string, now time.Time, output io.Writer, storage CostWriter) error {
+func RunWithRegistryAndStorage(ctx context.Context, registry *provider.Registry, providerName, accountID string, now time.Time, output io.Writer, storage CostWriter, providerConfig ...map[string]string) error {
 	if providerName == "" || accountID == "" || registry == nil || output == nil || storage == nil {
 		return fmt.Errorf("provider registry, provider, account ID, output, and cost storage are required")
 	}
@@ -96,8 +97,15 @@ func RunWithRegistryAndStorage(ctx context.Context, registry *provider.Registry,
 		return err
 	}
 	start, end := PreviousSevenCompleteUTCDays(now)
-	request := provider.CollectRequest{AccountID: accountID, StartTime: start, EndTime: end, CollectionID: providerName + ":" + accountID + ":" + start.Format("2006-01-02")}
+	request := provider.CollectRequest{AccountID: accountID, ProviderConfig: firstProviderConfig(providerConfig), StartTime: start, EndTime: end, CollectionID: providerName + ":" + accountID + ":" + start.Format("2006-01-02")}
 	return RunProviderWithStorage(ctx, cloudProvider, request, output, storage)
+}
+
+func firstProviderConfig(configs []map[string]string) map[string]string {
+	if len(configs) == 0 {
+		return nil
+	}
+	return configs[0]
 }
 
 func RunProvider(ctx context.Context, cloudProvider provider.Provider, request provider.CollectRequest, output io.Writer) error {

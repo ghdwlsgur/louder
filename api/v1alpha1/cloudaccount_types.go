@@ -18,6 +18,10 @@ type CloudAccountSpec struct {
 	// CredentialRef names a Kubernetes Secret populated through Vault and ESO.
 	CredentialRef corev1.LocalObjectReference `json:"credentialRef"`
 
+	// ProviderConfig contains non-secret settings interpreted by the selected provider.
+	// +optional
+	ProviderConfig map[string]string `json:"providerConfig,omitempty"`
+
 	// Collection controls the collector schedule.
 	Collection CollectionSpec `json:"collection"`
 
@@ -70,6 +74,12 @@ func (in *CloudAccount) DeepCopyInto(out *CloudAccount) {
 		out.Spec.Metadata = make(map[string]string, len(in.Spec.Metadata))
 		for key, value := range in.Spec.Metadata {
 			out.Spec.Metadata[key] = value
+		}
+	}
+	if in.Spec.ProviderConfig != nil {
+		out.Spec.ProviderConfig = make(map[string]string, len(in.Spec.ProviderConfig))
+		for key, value := range in.Spec.ProviderConfig {
+			out.Spec.ProviderConfig[key] = value
 		}
 	}
 	if in.Status.Conditions != nil {

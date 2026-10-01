@@ -27,7 +27,7 @@ func TestRunWithRegistryCollectsPreviousSevenCompleteUTCDays(t *testing.T) {
 		Provider:       "aws",
 		SourceRecordID: "aws-cost-explorer-123456789012-2026-09-30",
 		BillingScope:   "123456789012",
-		CostBasis:      provider.CostBasisUnblended,
+		CostBasis:      provider.CostBasisNet,
 		Amount:         "12.34",
 		Currency:       "USD",
 		UsageStart:     time.Date(2026, time.September, 30, 0, 0, 0, 0, time.UTC),
@@ -39,13 +39,17 @@ func TestRunWithRegistryCollectsPreviousSevenCompleteUTCDays(t *testing.T) {
 	}
 	now := time.Date(2026, time.October, 1, 3, 15, 0, 0, time.FixedZone("UTC-7", -7*60*60))
 	var output bytes.Buffer
-	if err := RunWithRegistry(context.Background(), registry, "aws", "123456789012", now, &output); err != nil {
+	providerConfig := map[string]string{"projectId": "billing-query", "datasetId": "billing", "tableId": "export"}
+	if err := RunWithRegistry(context.Background(), registry, "aws", "123456789012", now, &output, providerConfig); err != nil {
 		t.Fatalf("RunWithRegistry() error = %v", err)
 	}
 	wantStart := time.Date(2026, time.September, 24, 0, 0, 0, 0, time.UTC)
 	wantEnd := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
 	if fake.request.AccountID != "123456789012" || !fake.request.StartTime.Equal(wantStart) || !fake.request.EndTime.Equal(wantEnd) {
 		t.Errorf("CollectRequest = %#v, want account and previous seven complete UTC days", fake.request)
+	}
+	if fake.request.ProviderConfig["projectId"] != "billing-query" || fake.request.ProviderConfig["datasetId"] != "billing" || fake.request.ProviderConfig["tableId"] != "export" {
+		t.Errorf("CollectRequest provider config = %#v", fake.request.ProviderConfig)
 	}
 	if !fake.validated || !fake.collected {
 		t.Errorf("provider calls: validated=%t collected=%t, want both true", fake.validated, fake.collected)
@@ -65,11 +69,25 @@ func TestRunEmitsFixtureRecordsAsJSONLines(t *testing.T) {
 	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &record); err != nil {
 		t.Fatalf("output is not a JSON record: %v", err)
 	}
-	if record.Provider != "aws" || record.BillingScope != "synthetic-account" || record.SourceRecordID == "" || record.CostBasis != provider.CostBasisUnblended {
+	if record.Provider != "aws" || record.BillingScope != "synthetic-account" || record.SourceRecordID == "" || record.CostBasis != provider.CostBasisNet {
 		t.Errorf("record = %#v, want AWS fixture record scoped to synthetic-account", record)
 	}
 	if output.Bytes()[output.Len()-1] != '\n' {
 		t.Error("JSON Lines output must end with a newline")
+	}
+}
+
+func TestRunEmitsGCPBigQueryFixtureAsJSONLines(t *testing.T) {
+	var output bytes.Buffer
+	if err := Run(context.Background(), "gcp", "synthetic-billing-account", "embedded:gcp", &output); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	var record provider.RawCostRecord
+	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &record); err != nil {
+		t.Fatalf("output is not a JSON record: %v", err)
+	}
+	if record.Provider != "gcp" || record.BillingScope != "synthetic-billing-account" || record.CostBasis != provider.CostBasisNet || record.SourceRecordID == "" {
+		t.Errorf("record = %#v, want a GCP net-cost fixture record", record)
 	}
 }
 
@@ -78,7 +96,7 @@ func TestRunWithRegistryAndStorageCollectsPreviousSevenCompleteUTCDays(t *testin
 		Provider:       "aws",
 		SourceRecordID: "aws-cost-explorer-123456789012-2026-09-30",
 		BillingScope:   "123456789012",
-		CostBasis:      provider.CostBasisUnblended,
+		CostBasis:      provider.CostBasisNet,
 		Amount:         "12.34",
 		Currency:       "USD",
 		UsageStart:     time.Date(2026, time.September, 30, 0, 0, 0, 0, time.UTC),
@@ -112,7 +130,7 @@ func TestRunWithStoragePersistsNormalizedAWSFixture(t *testing.T) {
 		Provider:         "aws",
 		BillingAccountID: "synthetic-account",
 		SourceRecordID:   "fixture-aws-001",
-		CostBasis:        provider.CostBasisUnblended,
+		CostBasis:        provider.CostBasisNet,
 		Amount:           "12.34",
 		Currency:         "USD",
 		UsageStart:       time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),

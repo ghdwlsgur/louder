@@ -51,7 +51,9 @@ Provider implementations are responsible for:
 - provider-specific raw response interpretation
 - provider-specific source identifiers
 
-The initial AWS adapter uses Cost Explorer `GetCostAndUsage` with `DAILY` granularity and `UnblendedCost`, filtered to one linked account. It maps one account total per day into the existing raw record shape and does not provide service or resource breakdowns. The collector uses a UTC date interval with an inclusive start and exclusive end; each live run requests the previous seven complete UTC days. CloudAccount schedules remain user-controlled, and examples recommend one run per day. Stable account-day source IDs let ClickHouse replace revised values on later runs. AWS refreshes Cost Explorer data at least once every 24 hours, but upstream data can arrive later; the seven-day lookback does not guarantee final billing values. With the primary billing view, AWS currently charges $0.01 per paginated API request. A once-daily schedule therefore costs about $0.01 per account per day at one page per run, compared with about $0.04 at a six-hour schedule; additional pages increase the charge ([refresh behavior](https://docs.aws.amazon.com/cost-management/latest/userguide/ce-what-is.html), [API pricing](https://aws.amazon.com/aws-cost-management/aws-cost-explorer/pricing/)).
+The AWS adapter uses Cost Explorer `GetCostAndUsage` with `DAILY` granularity and `NetUnblendedCost`, filtered to one linked account. The GCP adapter reads the Standard usage cost export from BigQuery, sums `cost` and nested `credits`, and groups totals by UTC usage date and currency. Both currently map account-level daily totals to the common `net_cost` basis without service or resource breakdowns. The collector uses a UTC date interval with an inclusive start and exclusive end; each live run requests the previous seven complete UTC days. CloudAccount schedules remain user-controlled, and examples recommend one run per day. Stable account-day source IDs let ClickHouse replace revised values on later runs. AWS refreshes Cost Explorer data at least once every 24 hours, but upstream data can arrive later; the seven-day lookback does not guarantee final billing values. With the primary billing view, AWS currently charges $0.01 per paginated API request. A once-daily schedule therefore costs about $0.01 per account per day at one page per run, compared with about $0.04 at a six-hour schedule; additional pages increase the charge ([refresh behavior](https://docs.aws.amazon.com/cost-management/latest/userguide/ce-what-is.html), [API pricing](https://aws.amazon.com/aws-cost-management/aws-cost-explorer/pricing/)).
+
+For GCP, `CloudAccount.spec.providerConfig` must identify the query project, export dataset, and standard table through `projectId`, `datasetId`, and `tableId`. The billing account ID is the `CloudAccount.spec.accountId`. Enable Standard usage cost export before collection and grant the workload service account BigQuery job creation on the query project and read access to the export dataset. Export rows arrive asynchronously; the seven-day recollection range does not guarantee final billing data. Query processing may incur charges based on the amount of data scanned.
 
 Provider implementations are not responsible for:
 
@@ -75,10 +77,11 @@ type CollectRequest struct {
     StartTime   time.Time
     EndTime     time.Time
     CollectionID string
+    ProviderConfig map[string]string
 }
 ```
 
-Additional provider-specific options should be minimized.
+`CollectRequest.ProviderConfig` carries non-secret provider settings such as GCP BigQuery project, dataset, and table identifiers. Credentials remain in the referenced Kubernetes Secret.
 
 If required, prefer an opaque provider configuration block validated by the provider implementation rather than leaking provider fields through shared business logic.
 
@@ -114,7 +117,9 @@ tags/labels
 raw dimensions needed for normalization
 ```
 
-`RawCostRecord.CostBasis` carries the provider adapter's normalized cost semantic. The initial AWS adapter maps Cost Explorer `UnblendedCost` to `unblended_cost`. Adapters must not populate fields with guessed values.
+`RawCostRecord.CostBasis` carries the provider adapter's normalized cost semantic. AWS `NetUnblendedCost` and GCP `cost + credits` map to `net_cost`. Adapters must not populate fields with guessed values.
+
+Existing ClickHouse rows written by older Collector versions keep their original `unblended_cost` basis. Before upgrading a populated installation, replay the affected billing period or start analysis at a clean period; the normal seven-day recollection window cannot rewrite older rows.
 
 The first `internal/normalize` output keeps provider, billing account, source record ID, cost basis, amount, currency, and usage interval. Amounts remain decimal strings in the source currency. Service/resource dimensions and currency conversion are outside this initial slice.
 

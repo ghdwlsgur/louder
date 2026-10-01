@@ -6,15 +6,17 @@ import (
 )
 
 type CollectRequest struct {
-	AccountID    string
-	StartTime    time.Time
-	EndTime      time.Time
-	CollectionID string
+	AccountID      string
+	ProviderConfig map[string]string
+	StartTime      time.Time
+	EndTime        time.Time
+	CollectionID   string
 }
 
 type CostBasis string
 
 const CostBasisUnblended CostBasis = "unblended_cost"
+const CostBasisNet CostBasis = "net_cost"
 
 type RawCostRecord struct {
 	Provider       string    `json:"provider"`

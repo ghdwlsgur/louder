@@ -66,6 +66,8 @@ spec:
 
 The Collector passes this Secret through `envFrom`, so AWS credential keys must use the AWS SDK environment variable names. The AWS Cost Explorer adapter needs only the read-only `ce:GetCostAndUsage` action. It uses the SDK default credential chain and does not read Vault directly.
 
+For GCP, store the service account JSON as the `GOOGLE_CREDENTIALS_JSON` key in the Secret referenced by `CloudAccount.spec.credentialRef`. The Collector exposes this key through `envFrom`; do not place the JSON or private key in `providerConfig`, manifests, or fixtures. Grant the service account `roles/bigquery.jobUser` on the configured query project and `roles/bigquery.dataViewer` on the export dataset, or equivalent narrower permissions. `providerConfig` contains only `projectId`, `datasetId`, and `tableId`. The project must have BigQuery enabled and billed; queries can incur BigQuery charges.
+
 ### Shared ClickHouse storage Secret
 
 Collector storage credentials are held in a separate namespace-local Secret and are never added to a `CloudAccount` or a provider credential Secret. Configure the Operator with `--collector-storage-secret-name=<secret-name>`; the referenced Secret is added to each Collector Pod through `envFrom`. The fixture-mode kind configuration marks this reference optional so the ordinary offline smoke path works without ClickHouse.

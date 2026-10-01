@@ -31,7 +31,7 @@ func TestNativeReaderReturnsNormalizedFinalRecord(t *testing.T) {
 		t.Fatalf("ReadCosts() returned %d records, want one logical row", len(records))
 	}
 	record := records[0]
-	if record.Provider != "aws" || record.BillingAccountID != "synthetic-kind-account" || record.SourceRecordID != "fixture-aws-001" || record.CostBasis != provider.CostBasisUnblended || record.Amount != "12.34" || record.Currency != "USD" || !record.UsageStart.Equal(start) || !record.UsageEnd.Equal(end) {
+	if record.Provider != "aws" || record.BillingAccountID != "synthetic-kind-account" || record.SourceRecordID != "fixture-aws-001" || record.CostBasis != provider.CostBasisNet || record.Amount != "12.34" || record.Currency != "USD" || !record.UsageStart.Equal(start) || !record.UsageEnd.Equal(end) {
 		t.Errorf("ReadCosts() record = %#v, want normalized AWS fixture values", record)
 	}
 }

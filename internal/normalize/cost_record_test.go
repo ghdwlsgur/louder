@@ -11,14 +11,14 @@ import (
 	"github.com/ghdwlsgur/louder/internal/provider"
 )
 
-func TestNormalizePreservesAWSUnblendedDailyCost(t *testing.T) {
+func TestNormalizePreservesAWSNetDailyCost(t *testing.T) {
 	start := time.Date(2026, time.September, 30, 9, 0, 0, 0, time.FixedZone("UTC+9", 9*60*60))
 	end := start.Add(24 * time.Hour)
 	raw := provider.RawCostRecord{
 		Provider:       "aws",
 		SourceRecordID: "aws-cost-explorer-123456789012-2026-09-30",
 		BillingScope:   "123456789012",
-		CostBasis:      provider.CostBasisUnblended,
+		CostBasis:      provider.CostBasisNet,
 		Amount:         "12.3400",
 		Currency:       "USD",
 		UsageStart:     start,
@@ -33,7 +33,7 @@ func TestNormalizePreservesAWSUnblendedDailyCost(t *testing.T) {
 		Provider:         "aws",
 		BillingAccountID: "123456789012",
 		SourceRecordID:   raw.SourceRecordID,
-		CostBasis:        provider.CostBasisUnblended,
+		CostBasis:        provider.CostBasisNet,
 		Amount:           "12.3400",
 		Currency:         "USD",
 		UsageStart:       time.Date(2026, time.September, 30, 0, 0, 0, 0, time.UTC),
@@ -46,7 +46,7 @@ func TestNormalizePreservesAWSUnblendedDailyCost(t *testing.T) {
 	if err != nil {
 		t.Fatalf("json.Marshal() error = %v", err)
 	}
-	wantJSON, err := os.ReadFile("testdata/aws-unblended-daily.json")
+	wantJSON, err := os.ReadFile("testdata/aws-net-daily.json")
 	if err != nil {
 		t.Fatalf("read normalized golden: %v", err)
 	}
@@ -56,6 +56,19 @@ func TestNormalizePreservesAWSUnblendedDailyCost(t *testing.T) {
 	}
 	if !bytes.Equal(gotJSON, compactWant.Bytes()) {
 		t.Errorf("normalized JSON = %s, want %s", gotJSON, compactWant.Bytes())
+	}
+}
+
+func TestNormalizePreservesGCPBigQueryNetDailyCost(t *testing.T) {
+	start := time.Date(2026, time.September, 29, 0, 0, 0, 0, time.UTC)
+	raw := provider.RawCostRecord{Provider: "gcp", SourceRecordID: "gcp-bigquery-ABC-2026-09-29-USD", BillingScope: "ABC", CostBasis: provider.CostBasisNet, Amount: "1.234567", Currency: "USD", UsageStart: start, UsageEnd: start.AddDate(0, 0, 1)}
+	got, err := Normalize(raw)
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	want := CostRecord{Provider: "gcp", BillingAccountID: "ABC", SourceRecordID: raw.SourceRecordID, CostBasis: provider.CostBasisNet, Amount: "1.234567", Currency: "USD", UsageStart: start, UsageEnd: start.AddDate(0, 0, 1)}
+	if got != want {
+		t.Errorf("Normalize() = %#v, want %#v", got, want)
 	}
 }
 

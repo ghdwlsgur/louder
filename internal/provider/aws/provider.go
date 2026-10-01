@@ -68,7 +68,7 @@ func (p *Provider) CollectCosts(ctx context.Context, request provider.CollectReq
 	}
 	input := &costexplorer.GetCostAndUsageInput{
 		Granularity: types.GranularityDaily,
-		Metrics:     []string{"UnblendedCost"},
+		Metrics:     []string{"NetUnblendedCost"},
 		TimePeriod:  &types.DateInterval{Start: aws.String(accountID.start), End: aws.String(accountID.end)},
 		Filter: &types.Expression{Dimensions: &types.DimensionValues{
 			Key:    types.DimensionLinkedAccount,
@@ -150,7 +150,7 @@ func mapDailyResult(accountID string, result types.ResultByTime) (provider.RawCo
 	if err != nil || !end.Equal(start.AddDate(0, 0, 1)) {
 		return provider.RawCostRecord{}, &provider.ProviderError{Class: provider.ErrorInvalidResponse}
 	}
-	metric, exists := result.Total["UnblendedCost"]
+	metric, exists := result.Total["NetUnblendedCost"]
 	if !exists || metric.Amount == nil || metric.Unit == nil || *metric.Unit == "" {
 		return provider.RawCostRecord{}, &provider.ProviderError{Class: provider.ErrorInvalidResponse}
 	}
@@ -161,7 +161,7 @@ func mapDailyResult(accountID string, result types.ResultByTime) (provider.RawCo
 		Provider:       "aws",
 		SourceRecordID: "aws-cost-explorer-" + accountID + "-" + *result.TimePeriod.Start,
 		BillingScope:   accountID,
-		CostBasis:      provider.CostBasisUnblended,
+		CostBasis:      provider.CostBasisNet,
 		Amount:         *metric.Amount,
 		Currency:       *metric.Unit,
 		UsageStart:     start,
