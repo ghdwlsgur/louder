@@ -218,7 +218,17 @@ spec:
     - BudgetThreshold
 ```
 
-The notifier resolves only the Kubernetes Secret. `events` is required and explicitly subscribes this destination to notifications; the current budget Analyzer event is `BudgetThreshold`. An optional selector matches the policy when at least one relevant CloudAccount has all configured metadata values.
+The one-shot Analyzer resolves the referenced Kubernetes Secret only after the event and account selectors match. `events` is required and explicitly subscribes this destination to notifications; the current budget Analyzer event is `BudgetThreshold`. An optional selector matches the policy when at least one relevant CloudAccount has all configured metadata values. The runtime reads `TEAMS_WEBHOOK_URL` from the Secret in the same namespace and does not include its value in errors or logs.
+
+Run the Analyzer once for a BudgetPolicy with:
+
+```bash
+./bin/louder-analyzer --namespace=cloud-cost --budget-policy=sre-monthly
+```
+
+After building the image, a Kubernetes Job can invoke `/louder-analyzer --namespace=cloud-cost --budget-policy=sre-monthly` with the namespace-scoped ServiceAccount permissions described below.
+
+The process also needs `CLICKHOUSE_ADDR`, `CLICKHOUSE_DATABASE`, `CLICKHOUSE_USERNAME`, `CLICKHOUSE_PASSWORD`, and optional `CLICKHOUSE_SECURE` environment variables. Workload manifests must provide these values from the namespace-local ClickHouse Secret with `envFrom`, and grant namespace-scoped `get`/`list` access to BudgetPolicies, CloudAccounts, NotificationPolicies, and `get` access to referenced Secrets. Do not schedule repeated runs until notification deduplication is available.
 
 Store the complete Teams Workflows callback URL as `TEAMS_WEBHOOK_URL` in the referenced Secret. The callback URL contains its authentication material and must be sourced through Vault and External Secrets Operator; never put it in a `NotificationPolicy`, ConfigMap, fixture, or log. The notifier accepts HTTPS URLs only and does not follow redirects. Workflows are associated with their owners, so production setup must assign and maintain an owner who will remain responsible for the workflow.
 
