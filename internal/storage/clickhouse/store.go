@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ghdwlsgur/louder/internal/normalize"
+	"github.com/ghdwlsgur/louder/internal/storage"
 )
 
 var (
@@ -19,20 +20,16 @@ type Inserter interface {
 	Close() error
 }
 
-type AccountScope struct {
-	Provider         string
-	BillingAccountID string
-}
-
-type Reader interface {
-	ReadCosts(context.Context, []AccountScope, time.Time, time.Time) ([]normalize.CostRecord, error)
-}
+type AccountScope = storage.AccountScope
+type Reader = storage.CostReader
 
 type Store struct {
 	inserter Inserter
-	reader   Reader
+	reader   storage.CostReader
 	now      func() time.Time
 }
+
+var _ storage.CostReader = (*Store)(nil)
 
 func New(inserter Inserter, now func() time.Time) *Store {
 	reader, _ := inserter.(Reader)

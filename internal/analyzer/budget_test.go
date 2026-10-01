@@ -1,12 +1,15 @@
 package analyzer
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/ghdwlsgur/louder/api/v1alpha1"
 	"github.com/ghdwlsgur/louder/internal/normalize"
 	"github.com/ghdwlsgur/louder/internal/provider"
+	"github.com/ghdwlsgur/louder/internal/storage"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -132,4 +135,88 @@ func TestEvaluateBudgetAggregatesExactAmountsAndSortsThresholds(t *testing.T) {
 			t.Errorf("intents[%d] = %#v, want threshold %d and exact spend 100.00", i, intent, wantThresholds[i])
 		}
 	}
+}
+
+func TestEvaluateStoredBudgetReadsSelectedAccountsForCurrentUTCMonth(t *testing.T) {
+	now := time.Date(2026, time.October, 1, 3, 0, 0, 0, time.FixedZone("UTC-7", -7*60*60))
+	policy := v1alpha1.BudgetPolicy{ObjectMeta: metav1.ObjectMeta{Name: "sre-monthly"}, Spec: v1alpha1.BudgetPolicySpec{
+		Selector:   map[string]string{"team": "sre"},
+		Amount:     v1alpha1.BudgetAmount{Value: 100, Currency: "USD"},
+		Thresholds: []int32{80},
+	}}
+	accounts := []v1alpha1.CloudAccount{
+		{Spec: v1alpha1.CloudAccountSpec{Provider: "aws", AccountID: "123", Metadata: map[string]string{"team": "sre"}}},
+		{Spec: v1alpha1.CloudAccountSpec{Provider: "gcp", AccountID: "456", Metadata: map[string]string{"team": "engineering"}}},
+	}
+	reader := &analyzerTestReader{records: []normalize.CostRecord{{
+		Provider: "aws", BillingAccountID: "123", SourceRecordID: "record-1", Amount: "80.00", Currency: "USD",
+		UsageStart: time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC),
+	}}}
+
+	intents, err := EvaluateStoredBudget(context.Background(), reader, policy, accounts, now)
+	if err != nil {
+		t.Fatalf("EvaluateStoredBudget() error = %v", err)
+	}
+	if reader.calls != 1 || len(reader.accounts) != 1 || reader.accounts[0] != (storage.AccountScope{Provider: "aws", BillingAccountID: "123"}) {
+		t.Errorf("reader scopes = %#v in %d calls, want only matching AWS account", reader.accounts, reader.calls)
+	}
+	monthStart := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
+	if reader.start.Location() != time.UTC || reader.end.Location() != time.UTC || !reader.start.Equal(monthStart) || !reader.end.Equal(now.UTC()) {
+		t.Errorf("reader range = [%s, %s), want UTC [%s, %s)", reader.start, reader.end, monthStart, now.UTC())
+	}
+	if len(intents) != 1 || intents[0].ThresholdPercent != 80 || intents[0].Spent != "80.00" {
+		t.Errorf("intents = %#v, want 80%% threshold with exact spend", intents)
+	}
+}
+
+func TestEvaluateStoredBudgetSkipsReaderWhenNoAccountsMatch(t *testing.T) {
+	policy := v1alpha1.BudgetPolicy{Spec: v1alpha1.BudgetPolicySpec{
+		Selector:   map[string]string{"team": "sre"},
+		Amount:     v1alpha1.BudgetAmount{Value: 100, Currency: "USD"},
+		Thresholds: []int32{80},
+	}}
+	accounts := []v1alpha1.CloudAccount{{Spec: v1alpha1.CloudAccountSpec{Provider: "aws", AccountID: "123", Metadata: map[string]string{"team": "engineering"}}}}
+	reader := &analyzerTestReader{}
+
+	intents, err := EvaluateStoredBudget(context.Background(), reader, policy, accounts, time.Date(2026, time.October, 5, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("EvaluateStoredBudget() error = %v", err)
+	}
+	if reader.calls != 0 || len(intents) != 0 {
+		t.Errorf("reader calls = %d, intents = %#v; want no query and no intents", reader.calls, intents)
+	}
+}
+
+func TestEvaluateStoredBudgetReturnsNoPartialIntentsOnReadError(t *testing.T) {
+	policy := v1alpha1.BudgetPolicy{Spec: v1alpha1.BudgetPolicySpec{
+		Amount:     v1alpha1.BudgetAmount{Value: 100, Currency: "USD"},
+		Thresholds: []int32{80},
+	}}
+	accounts := []v1alpha1.CloudAccount{{Spec: v1alpha1.CloudAccountSpec{Provider: "aws", AccountID: "123"}}}
+	reader := &analyzerTestReader{err: errors.New("clickhouse unavailable")}
+
+	intents, err := EvaluateStoredBudget(context.Background(), reader, policy, accounts, time.Date(2026, time.October, 5, 0, 0, 0, 0, time.UTC))
+	if err == nil {
+		t.Fatal("EvaluateStoredBudget() error = nil, want read error")
+	}
+	if len(intents) != 0 {
+		t.Errorf("intents = %#v, want no partial result", intents)
+	}
+}
+
+type analyzerTestReader struct {
+	calls    int
+	accounts []storage.AccountScope
+	start    time.Time
+	end      time.Time
+	records  []normalize.CostRecord
+	err      error
+}
+
+func (r *analyzerTestReader) ReadCosts(_ context.Context, accounts []storage.AccountScope, start, end time.Time) ([]normalize.CostRecord, error) {
+	r.calls++
+	r.accounts = append([]storage.AccountScope(nil), accounts...)
+	r.start = start
+	r.end = end
+	return r.records, r.err
 }
