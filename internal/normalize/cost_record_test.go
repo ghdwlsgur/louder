@@ -155,3 +155,16 @@ func TestNormalizePreservesIBMBilledCostAndDecimal(t *testing.T) {
 		t.Errorf("Normalize() = %#v, want %#v", got, want)
 	}
 }
+
+func TestNormalizePreservesAlibabaPretaxCostAndDecimal(t *testing.T) {
+	start := time.Date(2026, time.September, 29, 0, 0, 0, 0, time.UTC)
+	raw := provider.RawCostRecord{Provider: "alibaba", SourceRecordID: "alibaba-instance-1234567890123456-2026-09-29-USD", BillingScope: "1234567890123456", CostBasis: provider.CostBasisAlibabaPretax, Amount: "12.34567890123456789", Currency: "USD", UsageStart: start, UsageEnd: start.AddDate(0, 0, 1)}
+	got, err := Normalize(raw)
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	want := CostRecord{Provider: "alibaba", BillingAccountID: raw.BillingScope, SourceRecordID: raw.SourceRecordID, CostBasis: provider.CostBasisAlibabaPretax, Amount: raw.Amount, Currency: raw.Currency, UsageStart: start, UsageEnd: start.AddDate(0, 0, 1)}
+	if got != want {
+		t.Errorf("Normalize() = %#v, want %#v", got, want)
+	}
+}

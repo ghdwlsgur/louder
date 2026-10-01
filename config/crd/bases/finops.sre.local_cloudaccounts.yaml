@@ -91,6 +91,7 @@ spec:
                 - azure
                 - oci
                 - ibm
+                - alibaba
                 type: string
               providerConfig:
                 additionalProperties:

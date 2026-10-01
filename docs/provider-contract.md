@@ -61,6 +61,8 @@ For IBM Cloud, `CloudAccount.spec.accountId` is the IBM Cloud account ID. The ad
 
 For OCI, `CloudAccount.spec.accountId` is the tenancy OCID. The adapter requests daily tenancy totals using Usage API `queryType: COST`. The OCI principal needs `read usage-report` on the tenancy. The adapter keeps OCI cost records isolated under `oci_cost` until Oracle cost/credit/tax semantics have been validated against representative billing data.
 
+For Alibaba Cloud, `CloudAccount.spec.accountId` is the Alibaba Cloud account UID. The adapter queries BSS OpenAPI `DescribeInstanceBill` with `Granularity=DAILY`, one `BillingDate` at a time, and follows `NextToken`. It sums `PretaxAmount` by UTC billing date and currency under the distinct `alibaba_pretax_cost` basis. Alibaba documents a 24-hour data delay, excludes unsettled current-month pay-as-you-go amounts, and notes that some attached-resource costs require Split Bill; these records are not final invoice reconciliation data.
+
 Provider implementations are not responsible for:
 
 - Teams formatting
