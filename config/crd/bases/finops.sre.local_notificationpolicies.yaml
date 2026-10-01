@@ -55,6 +55,19 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
+              events:
+                description: Events identifies the event types this policy receives.
+                items:
+                  enum:
+                  - DailySummary
+                  - BudgetWarning
+                  - BudgetExceeded
+                  - BudgetThreshold
+                  - CostAnomaly
+                  - CollectionFailed
+                  type: string
+                minItems: 1
+                type: array
               selector:
                 additionalProperties:
                   type: string
@@ -65,6 +78,7 @@ spec:
                 type: string
             required:
             - credentialRef
+            - events
             - type
             type: object
           status:

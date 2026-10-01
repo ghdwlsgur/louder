@@ -10,6 +10,10 @@ type NotificationPolicySpec struct {
 	// +kubebuilder:validation:Enum=teams
 	Type          string                      `json:"type"`
 	CredentialRef corev1.LocalObjectReference `json:"credentialRef"`
+	// Events identifies the event types this policy receives.
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:items:Enum=DailySummary;BudgetWarning;BudgetExceeded;BudgetThreshold;CostAnomaly;CollectionFailed
+	Events []string `json:"events"`
 	// +optional
 	Selector map[string]string `json:"selector,omitempty"`
 }
@@ -45,6 +49,10 @@ func (in *NotificationPolicy) DeepCopyInto(out *NotificationPolicy) {
 		for key, value := range in.Spec.Selector {
 			out.Spec.Selector[key] = value
 		}
+	}
+	if in.Spec.Events != nil {
+		out.Spec.Events = make([]string, len(in.Spec.Events))
+		copy(out.Spec.Events, in.Spec.Events)
 	}
 	if in.Status.Conditions != nil {
 		out.Status.Conditions = make([]metav1.Condition, len(in.Status.Conditions))
