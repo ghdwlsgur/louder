@@ -1,0 +1,17 @@
+apiVersion: finops.sre.local/v1alpha1
+kind: CloudAccount
+metadata:
+  name: gcp-prod
+  namespace: cloud-cost
+spec:
+  provider: gcp
+  accountId: 000000-000000-000000
+  credentialRef:
+    name: gcp-billing-reader
+  providerConfig:
+    projectId: billing-query-project
+    datasetId: billing_export
+    tableId: gcp_billing_export_v1_000000_000000_000000
+  collection:
+    enabled: true
+    schedule: "0 0 * * *"

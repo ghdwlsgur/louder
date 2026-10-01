@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,27 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
+
+func TestCollectorCronJobPassesProviderConfig(t *testing.T) {
+	account := &v1alpha1.CloudAccount{ObjectMeta: metav1.ObjectMeta{Name: "gcp-prod", Namespace: "costs"}, Spec: v1alpha1.CloudAccountSpec{
+		Provider: "gcp", AccountID: "billing-123", ProviderConfig: map[string]string{"projectId": "billing-query", "datasetId": "billing", "tableId": "export"},
+	}}
+	job := collectorCronJob(account, "collector:test", false, "")
+	args := job.Spec.JobTemplate.Spec.Template.Spec.Containers[0].Args
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "--provider-config=") {
+			var got map[string]string
+			if err := json.Unmarshal([]byte(strings.TrimPrefix(arg, "--provider-config=")), &got); err != nil {
+				t.Fatalf("decode provider config argument: %v", err)
+			}
+			if got["projectId"] != "billing-query" || got["datasetId"] != "billing" || got["tableId"] != "export" {
+				t.Fatalf("provider config = %#v", got)
+			}
+			return
+		}
+	}
+	t.Fatal("CronJob arguments do not include --provider-config")
+}
 
 func TestReconcileReportsMissingCredentialSecret(t *testing.T) {
 	scheme := runtime.NewScheme()

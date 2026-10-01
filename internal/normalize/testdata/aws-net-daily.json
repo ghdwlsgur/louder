@@ -2,7 +2,7 @@
   "provider": "aws",
   "billingAccountId": "123456789012",
   "sourceRecordId": "aws-cost-explorer-123456789012-2026-09-30",
-  "costBasis": "unblended_cost",
+  "costBasis": "net_cost",
   "amount": "12.3400",
   "currency": "USD",
   "usageStart": "2026-09-30T00:00:00Z",

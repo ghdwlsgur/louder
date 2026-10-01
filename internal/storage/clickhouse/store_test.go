@@ -18,7 +18,7 @@ func TestWriteCostsWritesOneBatchWithUTCIngestionTime(t *testing.T) {
 		Provider:         "aws",
 		BillingAccountID: "123456789012",
 		SourceRecordID:   "aws-cost-explorer-123456789012-2026-09-30",
-		CostBasis:        "unblended_cost",
+		CostBasis:        "net_cost",
 		Amount:           "12.3400",
 		Currency:         "USD",
 		UsageStart:       time.Date(2026, time.September, 30, 0, 0, 0, 0, time.UTC),

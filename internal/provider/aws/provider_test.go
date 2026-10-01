@@ -15,20 +15,20 @@ import (
 	"github.com/ghdwlsgur/louder/internal/provider/contracttest"
 )
 
-func TestCollectCostsQueriesUnblendedDailyAccountTotalsAndAllPages(t *testing.T) {
+func TestCollectCostsQueriesNetUnblendedDailyAccountTotalsAndAllPages(t *testing.T) {
 	firstToken := "page-two"
 	client := &fakeCostExplorerClient{outputs: []*costexplorer.GetCostAndUsageOutput{
 		{
 			ResultsByTime: []types.ResultByTime{{
 				TimePeriod: &types.DateInterval{Start: aws.String("2026-09-29"), End: aws.String("2026-09-30")},
-				Total:      map[string]types.MetricValue{"UnblendedCost": {Amount: aws.String("12.3400"), Unit: aws.String("USD")}},
+				Total:      map[string]types.MetricValue{"NetUnblendedCost": {Amount: aws.String("12.3400"), Unit: aws.String("USD")}},
 			}},
 			NextPageToken: &firstToken,
 		},
 		{
 			ResultsByTime: []types.ResultByTime{{
 				TimePeriod: &types.DateInterval{Start: aws.String("2026-09-30"), End: aws.String("2026-10-01")},
-				Total:      map[string]types.MetricValue{"UnblendedCost": {Amount: aws.String("0"), Unit: aws.String("USD")}},
+				Total:      map[string]types.MetricValue{"NetUnblendedCost": {Amount: aws.String("0"), Unit: aws.String("USD")}},
 			}},
 		},
 	}}
@@ -48,8 +48,8 @@ func TestCollectCostsQueriesUnblendedDailyAccountTotalsAndAllPages(t *testing.T)
 		t.Fatalf("Cost Explorer calls = %d, want 2 pages", len(client.inputs))
 	}
 	first := client.inputs[0]
-	if first.Granularity != types.GranularityDaily || len(first.Metrics) != 1 || first.Metrics[0] != "UnblendedCost" {
-		t.Errorf("first request metric/granularity = (%v, %v), want (UnblendedCost, DAILY)", first.Metrics, first.Granularity)
+	if first.Granularity != types.GranularityDaily || len(first.Metrics) != 1 || first.Metrics[0] != "NetUnblendedCost" {
+		t.Errorf("first request metric/granularity = (%v, %v), want (NetUnblendedCost, DAILY)", first.Metrics, first.Granularity)
 	}
 	if first.TimePeriod == nil || aws.ToString(first.TimePeriod.Start) != "2026-09-29" || aws.ToString(first.TimePeriod.End) != "2026-10-01" {
 		t.Errorf("request period = %#v, want inclusive 2026-09-29 to exclusive 2026-10-01", first.TimePeriod)
@@ -61,8 +61,8 @@ func TestCollectCostsQueriesUnblendedDailyAccountTotalsAndAllPages(t *testing.T)
 		t.Errorf("second page token = %v, want %q", client.inputs[1].NextPageToken, firstToken)
 	}
 	want := []provider.RawCostRecord{
-		{Provider: "aws", SourceRecordID: "aws-cost-explorer-123456789012-2026-09-29", BillingScope: request.AccountID, CostBasis: provider.CostBasisUnblended, Amount: "12.3400", Currency: "USD", UsageStart: time.Date(2026, time.September, 29, 0, 0, 0, 0, time.UTC), UsageEnd: time.Date(2026, time.September, 30, 0, 0, 0, 0, time.UTC)},
-		{Provider: "aws", SourceRecordID: "aws-cost-explorer-123456789012-2026-09-30", BillingScope: request.AccountID, CostBasis: provider.CostBasisUnblended, Amount: "0", Currency: "USD", UsageStart: time.Date(2026, time.September, 30, 0, 0, 0, 0, time.UTC), UsageEnd: time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)},
+		{Provider: "aws", SourceRecordID: "aws-cost-explorer-123456789012-2026-09-29", BillingScope: request.AccountID, CostBasis: provider.CostBasisNet, Amount: "12.3400", Currency: "USD", UsageStart: time.Date(2026, time.September, 29, 0, 0, 0, 0, time.UTC), UsageEnd: time.Date(2026, time.September, 30, 0, 0, 0, 0, time.UTC)},
+		{Provider: "aws", SourceRecordID: "aws-cost-explorer-123456789012-2026-09-30", BillingScope: request.AccountID, CostBasis: provider.CostBasisNet, Amount: "0", Currency: "USD", UsageStart: time.Date(2026, time.September, 30, 0, 0, 0, 0, time.UTC), UsageEnd: time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)},
 	}
 	if len(records) != len(want) {
 		t.Fatalf("CollectCosts() records = %#v, want %#v", records, want)
@@ -139,7 +139,7 @@ func TestCostExplorerProviderContract(t *testing.T) {
 		Provider:       "aws",
 		SourceRecordID: "aws-cost-explorer-123456789012-2026-09-29",
 		BillingScope:   request.AccountID,
-		CostBasis:      provider.CostBasisUnblended,
+		CostBasis:      provider.CostBasisNet,
 		Amount:         "3.21",
 		Currency:       "USD",
 		UsageStart:     request.StartTime,
@@ -164,7 +164,7 @@ func TestCostExplorerProviderContract(t *testing.T) {
 func dailyOutput(start, end, amount, currency string) *costexplorer.GetCostAndUsageOutput {
 	return &costexplorer.GetCostAndUsageOutput{ResultsByTime: []types.ResultByTime{{
 		TimePeriod: &types.DateInterval{Start: aws.String(start), End: aws.String(end)},
-		Total:      map[string]types.MetricValue{"UnblendedCost": {Amount: aws.String(amount), Unit: aws.String(currency)}},
+		Total:      map[string]types.MetricValue{"NetUnblendedCost": {Amount: aws.String(amount), Unit: aws.String(currency)}},
 	}}}
 }
 
