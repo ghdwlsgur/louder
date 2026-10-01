@@ -11,6 +11,7 @@ import (
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/ghdwlsgur/louder/internal/normalize"
+	"github.com/ghdwlsgur/louder/internal/provider"
 )
 
 var ErrInvalidConfiguration = errors.New("invalid clickhouse configuration")
@@ -99,6 +100,51 @@ func (c *nativeInserter) InsertBatch(ctx context.Context, records []normalize.Co
 		}
 	}
 	return batch.Send()
+}
+
+func (c *nativeInserter) ReadCosts(ctx context.Context, accounts []AccountScope, start, end time.Time) ([]normalize.CostRecord, error) {
+	accountTuples := make([]string, len(accounts))
+	args := make([]any, 0, 2+2*len(accounts))
+	args = append(args, start.UTC(), end.UTC())
+	for i, account := range accounts {
+		accountTuples[i] = "(?, ?)"
+		args = append(args, account.Provider, account.BillingAccountID)
+	}
+	query := `SELECT provider, billing_account_id, source_record_id, cost_basis, amount, currency, usage_start, usage_end
+FROM cost_records FINAL
+WHERE usage_start >= ? AND usage_start < ?
+AND (provider, billing_account_id) IN (` + strings.Join(accountTuples, ", ") + ")"
+	rows, err := c.conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	records := make([]normalize.CostRecord, 0)
+	for rows.Next() {
+		var record normalize.CostRecord
+		var costBasis string
+		if err := rows.Scan(
+			&record.Provider,
+			&record.BillingAccountID,
+			&record.SourceRecordID,
+			&costBasis,
+			&record.Amount,
+			&record.Currency,
+			&record.UsageStart,
+			&record.UsageEnd,
+		); err != nil {
+			return nil, err
+		}
+		record.CostBasis = provider.CostBasis(costBasis)
+		record.UsageStart = record.UsageStart.UTC()
+		record.UsageEnd = record.UsageEnd.UTC()
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return records, nil
 }
 
 func (c *nativeInserter) Close() error {

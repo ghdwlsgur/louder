@@ -380,7 +380,7 @@ ClickHouse
 
 ClickHouse is the preferred analytical store for normalized cost records.
 
-The current Collector writes normalized account-day records to `cost_records`. The schema keeps provider amount text unchanged and uses `(provider, billing_account_id, source_record_id)` as the logical key. `ReplacingMergeTree(version)` performs replacement during background merges, so readers requiring one logical row must query with `FINAL` until query patterns are formalized. The Collector emits the original raw records as JSON Lines only after the ClickHouse batch succeeds. Object-storage archival is not implemented in this phase.
+The current Collector writes normalized account-day records to `cost_records`. The schema keeps provider amount text unchanged and uses `(provider, billing_account_id, source_record_id)` as the logical key. `ReplacingMergeTree(version)` performs replacement during background merges, so readers requiring one logical row must query with `FINAL` until query patterns are formalized. The ClickHouse Store reader accepts explicit provider/account pairs and a half-open UTC interval, applies `FINAL`, and returns normalized rows for the Analyzer. The Collector emits the original raw records as JSON Lines only after the ClickHouse batch succeeds. Object-storage archival is not implemented in this phase.
 
 The exact object-storage backend may evolve.
 
