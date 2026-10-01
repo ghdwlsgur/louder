@@ -74,6 +74,10 @@ kubectl --context "$context" wait \
   --for=condition=Established \
   --timeout=60s \
   crd/cloudaccounts.finops.sre.local
+kubectl --context "$context" wait \
+  --for=condition=Established \
+  --timeout=60s \
+  crd/budgetpolicies.finops.sre.local
 kubectl --context "$context" apply -f config/kind/operator.yaml
 kubectl --context "$context" rollout status \
   --timeout=120s \
@@ -106,6 +110,7 @@ if [[ "$mode" == storage ]]; then
   bash scripts/kind/assert-collector-cronjob.sh
   COLLECTOR_JOB_NAME=kind-fixture-collector-replay bash scripts/kind/assert-collector-cronjob.sh
   bash scripts/kind/assert-clickhouse-storage.sh
+  bash scripts/kind/assert-budgetpolicy-cronjob.sh
   port=19000
   kubectl --context "$context" port-forward --address 127.0.0.1 --namespace cloud-cost service/clickhouse "$port:9000" >/dev/null 2>&1 &
   port_forward_pid=$!

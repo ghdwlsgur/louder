@@ -171,3 +171,61 @@ func TestNotificationPolicyDeepCopyClonesEvents(t *testing.T) {
 		t.Fatalf("mutating copied events changed original to %q", original.Spec.Events[0])
 	}
 }
+
+func TestGeneratedBudgetPolicySchemaIncludesOptionalSchedule(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("..", "..", "config", "crd", "bases", "finops.sre.local_budgetpolicies.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	jsonData, err := utilyaml.ToJSON(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type schemaNode struct {
+		Type       string                `json:"type"`
+		Format     string                `json:"format"`
+		Items      *schemaNode           `json:"items"`
+		MinLength  *int                  `json:"minLength"`
+		Required   []string              `json:"required"`
+		Properties map[string]schemaNode `json:"properties"`
+	}
+	type schema struct {
+		Spec struct {
+			Versions []struct {
+				Schema struct {
+					OpenAPIV3Schema schemaNode `json:"openAPIV3Schema"`
+				} `json:"schema"`
+			} `json:"versions"`
+		} `json:"spec"`
+	}
+	var definition schema
+	if err := json.Unmarshal(jsonData, &definition); err != nil {
+		t.Fatal(err)
+	}
+	crdRoot := definition.Spec.Versions[0].Schema.OpenAPIV3Schema
+	root := crdRoot.Properties["spec"]
+	schedule := root.Properties["schedule"]
+	if schedule.Type != "string" || schedule.MinLength == nil || *schedule.MinLength != 1 {
+		t.Errorf("spec.schedule schema = %#v, want non-empty string", schedule)
+	}
+	if contains(root.Required, "schedule") {
+		t.Error("spec.schedule must remain optional so existing BudgetPolicies do not start recurring")
+	}
+	status := crdRoot.Properties["status"]
+	if status.Properties["lastNotifiedMonth"].Type != "string" {
+		t.Errorf("status.lastNotifiedMonth schema = %#v, want string", status.Properties["lastNotifiedMonth"])
+	}
+	thresholds := status.Properties["notifiedThresholds"]
+	if thresholds.Type != "array" || thresholds.Items == nil || thresholds.Items.Type != "integer" || thresholds.Items.Format != "int32" {
+		t.Errorf("status.notifiedThresholds schema = %#v, want int32 array", thresholds)
+	}
+}
+
+func TestBudgetPolicyDeepCopyClonesNotifiedThresholds(t *testing.T) {
+	original := &BudgetPolicy{Status: BudgetPolicyStatus{LastNotifiedMonth: "2026-10", NotifiedThresholds: []int32{80}}}
+	cloned := original.DeepCopy()
+	cloned.Status.NotifiedThresholds[0] = 100
+	if original.Status.NotifiedThresholds[0] != 80 {
+		t.Fatalf("mutating copied thresholds changed original to %d", original.Status.NotifiedThresholds[0])
+	}
+}
