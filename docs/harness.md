@@ -213,7 +213,7 @@ Tests should verify notification intent, not Teams delivery.
 
 ## 7. Notifier coverage
 
-Notifier is abstracted so Analyzer tests can verify notification intent without sending real Teams messages. `internal/notifier` provides a `FakeNotifier` and tests the Teams Workflows HTTP request through an in-process transport; tests do not call a real tenant. The budget policy dispatch service tests NotificationPolicy selection, injected destination resolution, and fanout. Kubernetes Secret resolution and scheduled delivery are not implemented yet.
+Notifier is abstracted so Analyzer tests can verify notification intent without sending real Teams messages. `internal/notifier` provides a `FakeNotifier` and tests the Teams Workflows HTTP request through an in-process transport; tests do not call a real tenant. The budget policy dispatch service tests NotificationPolicy selection, injected destination resolution, and fanout. `RunBudgetPolicy` tests namespace-scoped Kubernetes reads and referenced Secret handling with a fake client and notifier factory. Scheduled delivery and persisted deduplication are not implemented yet.
 
 Required implementations:
 

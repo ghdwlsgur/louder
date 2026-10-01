@@ -8,6 +8,7 @@ build:
 	@mkdir -p bin
 	go build -o bin/louder-operator ./cmd/operator
 	go build -o bin/louder-collector ./cmd/collector
+	go build -o bin/louder-analyzer ./cmd/analyzer
 
 docker-build:
 	docker build --tag $(IMAGE) .
