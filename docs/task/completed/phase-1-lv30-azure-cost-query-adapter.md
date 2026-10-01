@@ -7,10 +7,10 @@ Add an offline-testable Azure subscription cost adapter using the Cost Managemen
 ## Scope
 
 - Query Azure subscription-scope `ActualCost` at daily granularity with the `PreTaxCost` sum and preserve currency.
-- Use the existing half-open UTC collection interval and stable subscription-day record IDs.
+- Use the existing half-open UTC collection interval and stable subscription-day-currency record IDs.
 - Authenticate through a Microsoft Entra service principal supplied as `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, and `AZURE_CLIENT_SECRET` in the referenced Kubernetes Secret.
 - Register the Azure provider in the Collector without requiring AWS or GCP credentials.
-- Add provider fixture, shared contract scenarios, normalization coverage, and focused REST request/response tests using an HTTP test server.
+- Add Azure Query API response fixtures, shared contract scenarios, normalization coverage, empty/authentication/permission/rate-limit/timeout/malformed/duplicate/partial-result cases, CloudAccount sample, and security/setup documentation.
 - Document scope, permissions, credential keys, cost semantics, data freshness, and setup example.
 
 ## Non-goals
@@ -44,7 +44,7 @@ Add an offline-testable Azure subscription cost adapter using the Cost Managemen
 1. Write one REST request construction test and run it to record RED.
 2. Implement request scope, custom date range, daily `PreTaxCost` aggregation, response column mapping, pagination, and stable provider error classes behind an injectable HTTP/query boundary.
 3. Add service-principal credential-shape validation from Secret environment values and Collector registration.
-4. Add provider contract scenarios, fixture replay, normalizer test, CloudAccount sample, and security/setup documentation.
+4. Add Azure Query API fixtures, provider contract scenarios, empty/authentication/permission/rate-limit/timeout/malformed/duplicate/partial-result tests, normalizer coverage, CloudAccount sample, and security/setup documentation.
 5. Run repository tests, vet, formatting, build, manifests, and local kind smoke if Docker is available; do not make live CSP requests.
 
 ## Completion criteria
@@ -52,7 +52,7 @@ Add an offline-testable Azure subscription cost adapter using the Cost Managemen
 - An Azure CloudAccount using a subscription UUID can collect its previous seven complete UTC days through the Azure Cost Management Query API.
 - Query values are sent as JSON fields; the subscription identifier is validated before it is placed in the URL.
 - Daily `PreTaxCost`, `UsageDate`, and `Currency` columns are decoded independent of response column order; next links are followed until all pages are collected.
-- Records preserve the original currency and use stable subscription-day IDs while fitting the shared normalized record schema.
+- Records preserve the original currency and use stable subscription-day-currency IDs; duplicate scope/day/currency rows fail rather than collide in storage.
 - Authentication reads service-principal values only from Secret-injected environment variables; errors do not expose secrets.
 - Unit, shared provider contract, fixture, and normalization tests are offline.
 - Documentation identifies subscription-scope-only support and the ActualCost/PreTaxCost semantics.
@@ -65,12 +65,13 @@ Add an offline-testable Azure subscription cost adapter using the Cost Managemen
 - Budget evaluation rejects a selected record set when it contains more than one non-empty cost basis. This prevents silent aggregation of Azure actual pre-tax cost with AWS/GCP net cost until a cross-provider comparable basis is deliberately designed.
 - Use Microsoft Entra client-secret credentials from Vault -> ESO -> Kubernetes Secret -> Collector environment. The adapter performs no direct Vault calls.
 - Query API responses use numeric JSON values and a column-described row matrix. Decode by column name and retain decimal text without binary floating-point aggregation.
+- Query rows can distinguish currencies on the same date. Include currency in stable IDs and reject duplicate date/currency rows to avoid ClickHouse replacement collisions or double counting.
 - The Query API exposes a `nextLink`; follow it with the original request body and validate that pagination URLs remain on the configured Azure Resource Manager host before attaching a bearer token.
 - Existing ClickHouse records from other providers may have different cost-basis migration history; this task does not rewrite stored records.
 
 ## Verification plan
 
-- Record RED then GREEN per externally observable behavior. The mixed-basis analyzer test failed before the basis constant and rejection behavior were implemented; the Azure collector contract tests failed while the adapter still emitted `net_cost`, then passed after it emitted `actual_pre_tax_cost`.
+- Record RED then GREEN per externally observable behavior. The mixed-basis analyzer test failed before the basis constant and rejection behavior were implemented; Azure contract tests failed while collection still emitted `net_cost`, then passed after it emitted `actual_pre_tax_cost`.
 - `GOCACHE=/tmp/louder-go-cache go test ./internal/provider/azure ./internal/provider/contracttest ./internal/normalize ./internal/collector ./internal/controller ./cmd/collector -count=1`
 - `GOCACHE=/tmp/louder-go-cache go test ./... -count=1`
 - `GOCACHE=/tmp/louder-go-cache make vet`
@@ -86,12 +87,15 @@ Add an offline-testable Azure subscription cost adapter using the Cost Managemen
 - TDD RED: the first request-construction test failed because the Azure provider/query API did not yet exist.
 - TDD RED/GREEN: the mixed-basis analyzer test first failed to compile because the explicit basis and error were absent; after implementation it passed and returns `ErrMixedCostBasis` without partial intents.
 - TDD RED/GREEN: Azure provider contract assertions failed while collection still emitted `net_cost`; after mapping `PreTaxCost` to `actual_pre_tax_cost`, the provider tests passed.
-- `GOCACHE=/tmp/louder-go-cache go test ./... -count=1` passed outside the restricted sandbox. The Azure REST tests use localhost HTTP servers.
+- TDD RED/GREEN: duplicate same-day/same-currency rows were initially accepted; the adapter now rejects them as `InvalidResponse`. The same-day USD/EUR case initially collided because IDs omitted currency; including currency made both distinct records collect successfully.
+- TDD RED/GREEN: actual HTTP 401/403/429 collection tests initially returned `ProviderUnavailable`; preserving existing `ProviderError` values now retains authentication, permission, and rate-limit classes.
+- Azure API response fixtures cover two paginated pages with shuffled column order and same-day rows in separate currencies. HTTP tests also cover 204, timeout, malformed JSON, and a second-page failure with no partial output. Contract tests cover a valid empty collection.
+- `GOCACHE=/tmp/louder-go-cache go test ./... -count=1` passed outside the restricted sandbox after the review follow-ups. Azure REST tests use localhost HTTP servers.
 - `GOCACHE=/tmp/louder-go-cache make vet` passed.
 - `make fmt-check` passed.
 - `GOCACHE=/tmp/louder-go-cache make manifests` passed.
 - `GOCACHE=/tmp/louder-go-cache make build` passed.
 - `git diff --check` passed.
-- `make kind-e2e` passed. It built the local image, created the temporary `louder-e2e` kind cluster, verified the Operator/CloudAccount/CronJob/fixture Collector Job path, and cleaned up the cluster on exit. `kind get clusters` confirmed there were no remaining clusters. This did not call Azure.
+- `make kind-e2e` passed after the review follow-ups. It builds the local image, creates the temporary `louder-e2e` kind cluster, verifies the Operator/CloudAccount/CronJob/fixture Collector Job path, and cleans up the cluster on exit. `kind get clusters` confirmed there are no remaining clusters. This does not call Azure.
 - No live Azure calls have been made.
 - User approved the separate `actual_pre_tax_cost` basis and mixed-basis budget rejection.

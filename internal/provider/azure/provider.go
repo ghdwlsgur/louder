@@ -89,6 +89,7 @@ func (p *Provider) CollectCosts(ctx context.Context, request provider.CollectReq
 		return nil, classifyError(err)
 	}
 	records := make([]provider.RawCostRecord, 0, len(rows))
+	seen := make(map[string]struct{}, len(rows))
 	for _, row := range rows {
 		record, mapErr := mapDailyCost(request.AccountID, row)
 		if mapErr != nil {
@@ -97,6 +98,10 @@ func (p *Provider) CollectCosts(ctx context.Context, request provider.CollectReq
 		if record.UsageStart.Before(query.start) || !record.UsageStart.Before(query.end) {
 			return nil, &provider.ProviderError{Class: provider.ErrorInvalidResponse}
 		}
+		if _, duplicate := seen[record.SourceRecordID]; duplicate {
+			return nil, &provider.ProviderError{Class: provider.ErrorInvalidResponse}
+		}
+		seen[record.SourceRecordID] = struct{}{}
 		records = append(records, record)
 	}
 	return records, nil
@@ -124,7 +129,7 @@ func mapDailyCost(subscriptionID string, row dailyCost) (provider.RawCostRecord,
 		return provider.RawCostRecord{}, &provider.ProviderError{Class: provider.ErrorInvalidResponse}
 	}
 	return provider.RawCostRecord{
-		Provider: "azure", SourceRecordID: "azure-cost-query-" + subscriptionID + "-" + row.date,
+		Provider: "azure", SourceRecordID: "azure-cost-query-" + subscriptionID + "-" + row.date + "-" + row.currency,
 		BillingScope: subscriptionID, CostBasis: provider.CostBasisActualPreTax, Amount: amount.String(), Currency: row.currency,
 		UsageStart: start, UsageEnd: start.AddDate(0, 0, 1),
 	}, nil
@@ -333,6 +338,10 @@ func newClientSecretCredential() (*azidentity.ClientSecretCredential, error) {
 }
 
 func classifyError(err error) *provider.ProviderError {
+	var providerError *provider.ProviderError
+	if errors.As(err, &providerError) {
+		return providerError
+	}
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 		return &provider.ProviderError{Class: provider.ErrorTimeout}
 	}

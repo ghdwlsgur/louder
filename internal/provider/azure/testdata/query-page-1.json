@@ -1,0 +1,13 @@
+{
+  "properties": {
+    "columns": [
+      { "name": "UsageDate", "type": "Number" },
+      { "name": "Currency", "type": "String" },
+      { "name": "PreTaxCost", "type": "Number" }
+    ],
+    "rows": [
+      [20260929, "USD", 12.345678]
+    ],
+    "nextLink": "__NEXT_LINK__"
+  }
+}

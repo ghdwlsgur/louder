@@ -1,0 +1,12 @@
+{
+  "properties": {
+    "columns": [
+      { "name": "PreTaxCost", "type": "Number" },
+      { "name": "Currency", "type": "String" },
+      { "name": "UsageDate", "type": "Number" }
+    ],
+    "rows": [
+      [10.25, "EUR", 20260929]
+    ]
+  }
+}
