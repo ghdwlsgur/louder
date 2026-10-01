@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
@@ -103,5 +104,70 @@ func TestGeneratedBudgetPolicySchemaMatchesArchitecture(t *testing.T) {
 	forecast := properties["forecast"]
 	if forecast.Type != "object" || forecast.Properties["enabled"].Type != "boolean" {
 		t.Errorf("spec.forecast schema = %#v, want object with boolean enabled", forecast)
+	}
+}
+
+func TestGeneratedNotificationPolicySchemaRequiresSupportedEvents(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("..", "..", "config", "crd", "bases", "finops.sre.local_notificationpolicies.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	jsonData, err := utilyaml.ToJSON(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type schemaNode struct {
+		Type       string                `json:"type"`
+		Items      *schemaNode           `json:"items"`
+		Enum       []string              `json:"enum"`
+		MinItems   *int                  `json:"minItems"`
+		Required   []string              `json:"required"`
+		Properties map[string]schemaNode `json:"properties"`
+	}
+	type schema struct {
+		Spec struct {
+			Versions []struct {
+				Schema struct {
+					OpenAPIV3Schema schemaNode `json:"openAPIV3Schema"`
+				} `json:"schema"`
+			} `json:"versions"`
+		} `json:"spec"`
+	}
+	var definition schema
+	if err := json.Unmarshal(jsonData, &definition); err != nil {
+		t.Fatal(err)
+	}
+	properties := definition.Spec.Versions[0].Schema.OpenAPIV3Schema.Properties["spec"].Properties
+	events := properties["events"]
+	if events.Type != "array" || events.Items == nil || events.Items.Type != "string" {
+		t.Fatalf("spec.events schema = %#v, want array of strings", events)
+	}
+	want := []string{"DailySummary", "BudgetWarning", "BudgetExceeded", "BudgetThreshold", "CostAnomaly", "CollectionFailed"}
+	if !reflect.DeepEqual(events.Items.Enum, want) {
+		t.Errorf("spec.events enum = %#v, want %#v", events.Items.Enum, want)
+	}
+	if events.MinItems == nil || *events.MinItems != 1 {
+		t.Errorf("spec.events minItems = %v, want 1", events.MinItems)
+	}
+	if !contains(definition.Spec.Versions[0].Schema.OpenAPIV3Schema.Properties["spec"].Required, "events") {
+		t.Error("spec.events must be required")
+	}
+}
+
+func contains(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
+func TestNotificationPolicyDeepCopyClonesEvents(t *testing.T) {
+	original := &NotificationPolicy{Spec: NotificationPolicySpec{Events: []string{"BudgetThreshold"}}}
+	cloned := original.DeepCopy()
+	cloned.Spec.Events[0] = "DailySummary"
+	if original.Spec.Events[0] != "BudgetThreshold" {
+		t.Fatalf("mutating copied events changed original to %q", original.Spec.Events[0])
 	}
 }

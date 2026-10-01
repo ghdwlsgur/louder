@@ -222,13 +222,14 @@ spec:
   credentialRef:
     name: teams-finops-webhook
 
+  selector:
+    team: sre
+
   events:
-    - DailySummary
-    - BudgetWarning
-    - BudgetExceeded
-    - CostAnomaly
-    - CollectionFailed
+    - BudgetThreshold
 ```
+
+`spec.events` is required and lists the event types the policy subscribes to. A policy is selected only when its event list includes the emitted event and at least one relevant `CloudAccount.spec.metadata` entry matches every key in `spec.selector`. An empty selector matches any relevant account. The current Analyzer emits `BudgetThreshold`; the other enumerated event types are reserved for later Phase 1 event producers. The policy selector currently has a pure Analyzer resolver, while Kubernetes Secret resolution and scheduled delivery are not yet wired.
 
 ---
 
