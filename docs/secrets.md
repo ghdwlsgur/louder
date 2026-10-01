@@ -70,6 +70,8 @@ For GCP, store the service account JSON as the `GOOGLE_CREDENTIALS_JSON` key in 
 
 For Azure, store the Microsoft Entra service principal values as `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, and `AZURE_CLIENT_SECRET` in the referenced Secret. The Collector passes them to the adapter through `envFrom`. Assign the service principal the Cost Management Reader role on the subscription identified by `CloudAccount.spec.accountId`. Keep the client secret in Vault and ESO; never place it in `providerConfig`, the CloudAccount, or an example manifest.
 
+For OCI, store the API signing values in the Secret referenced by `CloudAccount.spec.credentialRef`: `OCI_TENANCY_OCID`, `OCI_USER_OCID`, `OCI_FINGERPRINT`, `OCI_REGION`, and `OCI_PRIVATE_KEY`. The private key must be an unencrypted RSA PKCS#1 or PKCS#8 PEM in this initial adapter. The Collector passes these values through `envFrom`; do not put key material in `providerConfig`, manifests, fixtures, or documentation. The tenancy principal needs the read-only IAM policy `Allow group <group_name> to read usage-report in tenancy`. Keep the key in Vault and synchronize it through ESO. `config/samples/cloudaccount-oci.yaml` uses a placeholder tenancy OCID and contains no credentials.
+
 ### Shared ClickHouse storage Secret
 
 Collector storage credentials are held in a separate namespace-local Secret and are never added to a `CloudAccount` or a provider credential Secret. Configure the Operator with `--collector-storage-secret-name=<secret-name>`; the referenced Secret is added to each Collector Pod through `envFrom`. The fixture-mode kind configuration marks this reference optional so the ordinary offline smoke path works without ClickHouse.

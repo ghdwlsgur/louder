@@ -9,7 +9,7 @@ import (
 // CloudAccountSpec defines the desired state for one billing account.
 type CloudAccountSpec struct {
 	// Provider identifies the cloud adapter used for collection.
-	// +kubebuilder:validation:Enum=aws;gcp;azure
+	// +kubebuilder:validation:Enum=aws;gcp;azure;oci
 	Provider string `json:"provider"`
 
 	// AccountID identifies the billing scope at the provider.

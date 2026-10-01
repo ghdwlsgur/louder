@@ -1,0 +1,13 @@
+apiVersion: finops.sre.local/v1alpha1
+kind: CloudAccount
+metadata:
+  name: oci-prod
+  namespace: cloud-cost
+spec:
+  provider: oci
+  accountId: ocid1.tenancy.oc1..replace-with-tenancy-ocid
+  credentialRef:
+    name: oci-cost-reader
+  collection:
+    enabled: true
+    schedule: "0 0 * * *"

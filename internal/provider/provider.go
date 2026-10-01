@@ -18,6 +18,7 @@ type CostBasis string
 const CostBasisUnblended CostBasis = "unblended_cost"
 const CostBasisNet CostBasis = "net_cost"
 const CostBasisActualPreTax CostBasis = "actual_pre_tax_cost"
+const CostBasisOCI CostBasis = "oci_cost"
 
 type RawCostRecord struct {
 	Provider       string    `json:"provider"`
