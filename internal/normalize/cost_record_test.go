@@ -72,6 +72,19 @@ func TestNormalizePreservesGCPBigQueryNetDailyCost(t *testing.T) {
 	}
 }
 
+func TestNormalizePreservesAzureActualPreTaxDailyCost(t *testing.T) {
+	start := time.Date(2026, time.September, 29, 0, 0, 0, 0, time.UTC)
+	raw := provider.RawCostRecord{Provider: "azure", SourceRecordID: "azure-cost-query-00000000-0000-0000-0000-000000000001-2026-09-29-USD", BillingScope: "00000000-0000-0000-0000-000000000001", CostBasis: provider.CostBasisActualPreTax, Amount: "12.345678", Currency: "USD", UsageStart: start, UsageEnd: start.AddDate(0, 0, 1)}
+	got, err := Normalize(raw)
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	want := CostRecord{Provider: "azure", BillingAccountID: raw.BillingScope, SourceRecordID: raw.SourceRecordID, CostBasis: provider.CostBasisActualPreTax, Amount: raw.Amount, Currency: raw.Currency, UsageStart: start, UsageEnd: start.AddDate(0, 0, 1)}
+	if got != want {
+		t.Errorf("Normalize() = %#v, want %#v", got, want)
+	}
+}
+
 func TestNormalizeRejectsMissingCostBasis(t *testing.T) {
 	raw := validRawRecord()
 	raw.CostBasis = ""

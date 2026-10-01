@@ -341,7 +341,7 @@ source_record_id
 collected_at
 ```
 
-This is the target schema, not a claim that every provider supplies every field today. The first normalized slice is account-level daily cost and contains only provider, billing account, source record ID, cost basis, amount, currency, and usage interval. AWS `NetUnblendedCost` and GCP Standard Billing Export (`cost + credits`) currently supply `net_cost`; unavailable service and resource dimensions are omitted rather than fabricated.
+This is the target schema, not a claim that every provider supplies every field today. The first normalized slice is account-level daily cost and contains only provider, billing account, source record ID, cost basis, amount, currency, and usage interval. AWS `NetUnblendedCost` and GCP Standard Billing Export (`cost + credits`) currently supply `net_cost`. Azure `ActualCost` (`PreTaxCost`) supplies `actual_pre_tax_cost`, which excludes taxes and does not include credits before invoice finalization. Budget evaluation rejects selected records with mixed cost bases instead of silently adding incomparable amounts. Unavailable service and resource dimensions are omitted rather than fabricated.
 
 Preserve original currency and normalized reporting currency separately.
 

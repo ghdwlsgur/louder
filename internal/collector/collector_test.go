@@ -91,6 +91,20 @@ func TestRunEmitsGCPBigQueryFixtureAsJSONLines(t *testing.T) {
 	}
 }
 
+func TestRunEmitsAzureCostQueryFixtureAsJSONLines(t *testing.T) {
+	var output bytes.Buffer
+	if err := Run(context.Background(), "azure", "00000000-0000-0000-0000-000000000001", "embedded:azure", &output); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	var record provider.RawCostRecord
+	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &record); err != nil {
+		t.Fatalf("output is not a JSON record: %v", err)
+	}
+	if record.Provider != "azure" || record.BillingScope != "00000000-0000-0000-0000-000000000001" || record.CostBasis != provider.CostBasisActualPreTax || record.SourceRecordID == "" {
+		t.Errorf("record = %#v, want an Azure actual pre-tax cost fixture record", record)
+	}
+}
+
 func TestRunWithRegistryAndStorageCollectsPreviousSevenCompleteUTCDays(t *testing.T) {
 	fake := &collectorTestProvider{records: []provider.RawCostRecord{{
 		Provider:       "aws",
