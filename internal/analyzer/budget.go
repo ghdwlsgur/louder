@@ -14,7 +14,10 @@ import (
 	"github.com/ghdwlsgur/louder/internal/storage"
 )
 
-var ErrInvalidBudgetPolicy = errors.New("invalid budget policy")
+var (
+	ErrInvalidBudgetPolicy = errors.New("invalid budget policy")
+	ErrMixedCostBasis      = errors.New("selected costs use different cost bases")
+)
 
 type BudgetThresholdIntent struct {
 	PolicyName       string
@@ -38,6 +41,7 @@ func EvaluateBudget(policy v1alpha1.BudgetPolicy, accounts []v1alpha1.CloudAccou
 	monthStart := time.Date(now.UTC().Year(), now.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
 	total := new(big.Rat)
 	precision := 0
+	var costBasis string
 	for _, record := range records {
 		if _, ok := selected[accountKey{provider: record.Provider, accountID: record.BillingAccountID}]; !ok {
 			continue
@@ -47,6 +51,12 @@ func EvaluateBudget(policy v1alpha1.BudgetPolicy, accounts []v1alpha1.CloudAccou
 		}
 		if record.Currency != policy.Spec.Amount.Currency {
 			return nil, fmt.Errorf("cost currency %q does not match budget currency %q", record.Currency, policy.Spec.Amount.Currency)
+		}
+		if record.CostBasis != "" {
+			if costBasis != "" && costBasis != string(record.CostBasis) {
+				return nil, fmt.Errorf("%w: %q and %q", ErrMixedCostBasis, costBasis, record.CostBasis)
+			}
+			costBasis = string(record.CostBasis)
 		}
 		amount, ok := new(big.Rat).SetString(record.Amount)
 		if !ok {

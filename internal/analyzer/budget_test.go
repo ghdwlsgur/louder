@@ -110,6 +110,31 @@ func TestEvaluateBudgetRejectsSelectedAccountCurrencyMismatch(t *testing.T) {
 	}
 }
 
+func TestEvaluateBudgetRejectsMixedCostBases(t *testing.T) {
+	now := time.Date(2026, time.October, 2, 0, 0, 0, 0, time.UTC)
+	policy := v1alpha1.BudgetPolicy{Spec: v1alpha1.BudgetPolicySpec{
+		Amount:     v1alpha1.BudgetAmount{Value: 100, Currency: "USD"},
+		Thresholds: []int32{80},
+	}}
+	accounts := []v1alpha1.CloudAccount{
+		{Spec: v1alpha1.CloudAccountSpec{Provider: "aws", AccountID: "123"}},
+		{Spec: v1alpha1.CloudAccountSpec{Provider: "azure", AccountID: "456"}},
+	}
+	start := now.Add(-time.Hour)
+	records := []normalize.CostRecord{
+		{Provider: "aws", BillingAccountID: "123", CostBasis: provider.CostBasisNet, Amount: "50", Currency: "USD", UsageStart: start},
+		{Provider: "azure", BillingAccountID: "456", CostBasis: provider.CostBasisActualPreTax, Amount: "50", Currency: "USD", UsageStart: start},
+	}
+
+	intents, err := EvaluateBudget(policy, accounts, records, now)
+	if !errors.Is(err, ErrMixedCostBasis) {
+		t.Fatalf("EvaluateBudget() error = %v, want mixed-cost-basis error", err)
+	}
+	if len(intents) != 0 {
+		t.Errorf("intents = %#v, want no partial results", intents)
+	}
+}
+
 func TestEvaluateBudgetAggregatesExactAmountsAndSortsThresholds(t *testing.T) {
 	now := time.Date(2026, time.October, 2, 0, 0, 0, 0, time.UTC)
 	policy := v1alpha1.BudgetPolicy{ObjectMeta: metav1.ObjectMeta{Name: "sre-monthly"}, Spec: v1alpha1.BudgetPolicySpec{

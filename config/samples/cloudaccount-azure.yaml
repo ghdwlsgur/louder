@@ -1,0 +1,13 @@
+apiVersion: finops.sre.local/v1alpha1
+kind: CloudAccount
+metadata:
+  name: azure-prod
+  namespace: cloud-cost
+spec:
+  provider: azure
+  accountId: 00000000-0000-0000-0000-000000000001
+  credentialRef:
+    name: azure-cost-reader
+  collection:
+    enabled: true
+    schedule: "0 0 * * *"

@@ -12,6 +12,7 @@ import (
 	"github.com/ghdwlsgur/louder/internal/collector"
 	"github.com/ghdwlsgur/louder/internal/provider"
 	awsprovider "github.com/ghdwlsgur/louder/internal/provider/aws"
+	azureprovider "github.com/ghdwlsgur/louder/internal/provider/azure"
 	gcpprovider "github.com/ghdwlsgur/louder/internal/provider/gcp"
 	"github.com/ghdwlsgur/louder/internal/storage/clickhouse"
 )
@@ -74,6 +75,9 @@ func runLive(ctx context.Context, providerName, accountID string, providerConfig
 		return err
 	}
 	if err := registry.Register("gcp", func() (provider.Provider, error) { return gcpprovider.New(), nil }); err != nil {
+		return err
+	}
+	if err := registry.Register("azure", func() (provider.Provider, error) { return azureprovider.New(), nil }); err != nil {
 		return err
 	}
 	return collector.RunWithRegistryAndStorage(ctx, registry, providerName, accountID, now, output, store, providerConfig)

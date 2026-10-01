@@ -3,6 +3,7 @@
     "provider": "azure",
     "sourceRecordId": "fixture-azure-001",
     "billingScope": "synthetic",
+    "costBasis": "actual_pre_tax_cost",
     "amount": "12.34",
     "currency": "USD",
     "usageStart": "2026-01-01T00:00:00Z",
