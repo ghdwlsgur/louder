@@ -134,15 +134,11 @@ func validateRequest(request provider.CollectRequest, config map[string]string) 
 	if !projectIDPattern.MatchString(projectID) || !identifierPattern.MatchString(datasetID) || !identifierPattern.MatchString(tableID) {
 		return queryRequest{}, &provider.ProviderError{Class: provider.ErrorUnsupportedBillingScope}
 	}
-	start, end := request.StartTime.UTC(), request.EndTime.UTC()
-	if request.AccountID == "" || !start.Before(end) || !isUTCMidnight(start) || !isUTCMidnight(end) {
+	start, end, validWindow := provider.NormalizeDailyWindow(request.StartTime, request.EndTime)
+	if request.AccountID == "" || !validWindow {
 		return queryRequest{}, &provider.ProviderError{Class: provider.ErrorUnsupportedBillingScope}
 	}
 	return queryRequest{projectID: projectID, datasetID: datasetID, tableID: tableID, accountID: request.AccountID, start: start, end: end}, nil
-}
-
-func isUTCMidnight(value time.Time) bool {
-	return value.Hour() == 0 && value.Minute() == 0 && value.Second() == 0 && value.Nanosecond() == 0
 }
 
 func mapDailyCost(accountID string, row dailyCost) (provider.RawCostRecord, error) {

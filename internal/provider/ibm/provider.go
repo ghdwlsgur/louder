@@ -66,8 +66,8 @@ func (p *Provider) CollectCosts(ctx context.Context, request provider.CollectReq
 	if !accountIDPattern.MatchString(request.AccountID) {
 		return nil, &provider.ProviderError{Class: provider.ErrorUnsupportedBillingScope}
 	}
-	start, end := request.StartTime.UTC(), request.EndTime.UTC()
-	if !start.Before(end) || !isMidnight(start) || !isMidnight(end) {
+	start, end, validWindow := provider.NormalizeDailyWindow(request.StartTime, request.EndTime)
+	if !validWindow {
 		return nil, &provider.ProviderError{Class: provider.ErrorUnsupportedBillingScope}
 	}
 	totals := make(map[string]decimal.Decimal)
@@ -76,7 +76,7 @@ func (p *Provider) CollectCosts(ctx context.Context, request provider.CollectReq
 		if !periodEnd.After(start) || !day.Before(end) {
 			return nil
 		}
-		if !isMidnight(day) || !periodEnd.Equal(day.AddDate(0, 0, 1)) || row.currency == "" {
+		if !provider.IsUTCMidnight(day) || !periodEnd.Equal(day.AddDate(0, 0, 1)) || row.currency == "" {
 			return &provider.ProviderError{Class: provider.ErrorInvalidResponse}
 		}
 		amount, parseErr := decimal.NewFromString(row.billedCost)
@@ -102,10 +102,6 @@ func (p *Provider) CollectCosts(ctx context.Context, request provider.CollectReq
 	}
 	sort.Slice(records, func(i, j int) bool { return records[i].SourceRecordID < records[j].SourceRecordID })
 	return records, nil
-}
-
-func isMidnight(value time.Time) bool {
-	return value.Hour() == 0 && value.Minute() == 0 && value.Second() == 0 && value.Nanosecond() == 0
 }
 
 func classifyError(err error) error {

@@ -111,15 +111,11 @@ func validateRequest(request provider.CollectRequest) (queryRequest, error) {
 	if !subscriptionIDPattern.MatchString(request.AccountID) {
 		return queryRequest{}, &provider.ProviderError{Class: provider.ErrorUnsupportedBillingScope}
 	}
-	start, end := request.StartTime.UTC(), request.EndTime.UTC()
-	if !start.Before(end) || !isUTCMidnight(start) || !isUTCMidnight(end) {
+	start, end, validWindow := provider.NormalizeDailyWindow(request.StartTime, request.EndTime)
+	if !validWindow {
 		return queryRequest{}, &provider.ProviderError{Class: provider.ErrorUnsupportedBillingScope}
 	}
 	return queryRequest{subscriptionID: request.AccountID, start: start, end: end}, nil
-}
-
-func isUTCMidnight(value time.Time) bool {
-	return value.Hour() == 0 && value.Minute() == 0 && value.Second() == 0 && value.Nanosecond() == 0
 }
 
 func mapDailyCost(subscriptionID string, row dailyCost) (provider.RawCostRecord, error) {
