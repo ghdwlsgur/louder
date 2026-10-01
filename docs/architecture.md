@@ -151,7 +151,7 @@ spec:
 
   collection:
     enabled: true
-    schedule: "0 */6 * * *"
+    schedule: "0 0 * * *"
 
   metadata:
     team: sre
@@ -383,7 +383,7 @@ ClickHouse
 
 ClickHouse is the preferred analytical store for normalized cost records.
 
-The current Collector writes normalized account-day records to `cost_records`. The schema keeps provider amount text unchanged and uses `(provider, billing_account_id, source_record_id)` as the logical key. `ReplacingMergeTree(version)` performs replacement during background merges, so readers requiring one logical row must query with `FINAL` until query patterns are formalized. The ClickHouse Store reader accepts explicit provider/account pairs and a half-open UTC interval, applies `FINAL`, and returns normalized rows for the Analyzer. The Collector emits the original raw records as JSON Lines only after the ClickHouse batch succeeds. Object-storage archival is not implemented in this phase.
+The current Collector writes normalized account-day records to `cost_records`. The AWS Collector re-queries the previous seven complete UTC days once per scheduled run so revised daily totals can replace earlier values. CloudAccount schedules remain user-controlled; the examples use one run per day to limit Cost Explorer API calls. AWS Cost Explorer refreshes at least every 24 hours, but upstream billing data can arrive later, so this seven-day window is not a finality guarantee. Cost Explorer API calls are charged per paginated request. The schema keeps provider amount text unchanged and uses `(provider, billing_account_id, source_record_id)` as the logical key. AWS source IDs remain stable for the same account and usage date. `ReplacingMergeTree(version)` performs replacement during background merges, so readers requiring one logical row must query with `FINAL` until query patterns are formalized. The ClickHouse Store reader accepts explicit provider/account pairs and a half-open UTC interval, applies `FINAL`, and returns normalized rows for the Analyzer. The Collector emits the original raw records as JSON Lines only after the ClickHouse batch succeeds. Object-storage archival is not implemented in this phase.
 
 The exact object-storage backend may evolve.
 

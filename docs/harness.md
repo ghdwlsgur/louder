@@ -76,7 +76,7 @@ Never store:
 
 The fixture transport should emulate provider behavior where practical.
 
-The AWS live adapter currently queries Cost Explorer `GetCostAndUsage` for daily account totals using `UnblendedCost`. Unit tests use an SDK client double and synthetic responses; kind E2E stays offline and does not require AWS credentials. The live collector defaults to the previous complete UTC day. Cost Explorer data can be refreshed later, so this first pass does not backfill revised days.
+The AWS live adapter queries Cost Explorer `GetCostAndUsage` for daily account totals using `UnblendedCost`. Unit tests use an SDK client double and synthetic responses; kind E2E stays offline and does not require AWS credentials. Each live run requests the previous seven complete UTC days and writes stable account-day IDs so ClickHouse can replace revised totals. CloudAccount schedules remain explicit; examples recommend one run per day because each paginated Cost Explorer API request is charged. AWS refreshes data at least every 24 hours, but some upstream data can arrive later, so the lookback is bounded and does not guarantee final values. See [AWS refresh behavior](https://docs.aws.amazon.com/cost-management/latest/userguide/ce-what-is.html) and [API pricing](https://aws.amazon.com/aws-cost-management/aws-cost-explorer/pricing/).
 
 A developer should be able to run something conceptually like:
 

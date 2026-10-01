@@ -12,23 +12,26 @@ import (
 	"github.com/ghdwlsgur/louder/internal/provider"
 )
 
-func TestPreviousCompleteUTCDay(t *testing.T) {
+func TestPreviousSevenCompleteUTCDays(t *testing.T) {
 	now := time.Date(2026, time.October, 1, 3, 15, 0, 0, time.FixedZone("UTC-7", -7*60*60))
-	start, end := PreviousCompleteUTCDay(now)
-	wantStart := time.Date(2026, time.September, 30, 0, 0, 0, 0, time.UTC)
+	start, end := PreviousSevenCompleteUTCDays(now)
+	wantStart := time.Date(2026, time.September, 24, 0, 0, 0, 0, time.UTC)
 	wantEnd := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
 	if !start.Equal(wantStart) || !end.Equal(wantEnd) {
-		t.Fatalf("PreviousCompleteUTCDay() = (%s, %s), want (%s, %s)", start, end, wantStart, wantEnd)
+		t.Fatalf("PreviousSevenCompleteUTCDays() = (%s, %s), want (%s, %s)", start, end, wantStart, wantEnd)
 	}
 }
 
-func TestRunWithRegistryCollectsPreviousCompleteUTCDay(t *testing.T) {
+func TestRunWithRegistryCollectsPreviousSevenCompleteUTCDays(t *testing.T) {
 	fake := &collectorTestProvider{records: []provider.RawCostRecord{{
 		Provider:       "aws",
 		SourceRecordID: "aws-cost-explorer-123456789012-2026-09-30",
 		BillingScope:   "123456789012",
+		CostBasis:      provider.CostBasisUnblended,
 		Amount:         "12.34",
 		Currency:       "USD",
+		UsageStart:     time.Date(2026, time.September, 30, 0, 0, 0, 0, time.UTC),
+		UsageEnd:       time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC),
 	}}}
 	registry := provider.NewRegistry()
 	if err := registry.Register("aws", func() (provider.Provider, error) { return fake, nil }); err != nil {
@@ -39,10 +42,10 @@ func TestRunWithRegistryCollectsPreviousCompleteUTCDay(t *testing.T) {
 	if err := RunWithRegistry(context.Background(), registry, "aws", "123456789012", now, &output); err != nil {
 		t.Fatalf("RunWithRegistry() error = %v", err)
 	}
-	wantStart := time.Date(2026, time.September, 30, 0, 0, 0, 0, time.UTC)
+	wantStart := time.Date(2026, time.September, 24, 0, 0, 0, 0, time.UTC)
 	wantEnd := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
 	if fake.request.AccountID != "123456789012" || !fake.request.StartTime.Equal(wantStart) || !fake.request.EndTime.Equal(wantEnd) {
-		t.Errorf("CollectRequest = %#v, want account and previous complete UTC day", fake.request)
+		t.Errorf("CollectRequest = %#v, want account and previous seven complete UTC days", fake.request)
 	}
 	if !fake.validated || !fake.collected {
 		t.Errorf("provider calls: validated=%t collected=%t, want both true", fake.validated, fake.collected)
@@ -67,6 +70,32 @@ func TestRunEmitsFixtureRecordsAsJSONLines(t *testing.T) {
 	}
 	if output.Bytes()[output.Len()-1] != '\n' {
 		t.Error("JSON Lines output must end with a newline")
+	}
+}
+
+func TestRunWithRegistryAndStorageCollectsPreviousSevenCompleteUTCDays(t *testing.T) {
+	fake := &collectorTestProvider{records: []provider.RawCostRecord{{
+		Provider:       "aws",
+		SourceRecordID: "aws-cost-explorer-123456789012-2026-09-30",
+		BillingScope:   "123456789012",
+		CostBasis:      provider.CostBasisUnblended,
+		Amount:         "12.34",
+		Currency:       "USD",
+		UsageStart:     time.Date(2026, time.September, 30, 0, 0, 0, 0, time.UTC),
+		UsageEnd:       time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC),
+	}}}
+	registry := provider.NewRegistry()
+	if err := registry.Register("aws", func() (provider.Provider, error) { return fake, nil }); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, time.October, 1, 3, 15, 0, 0, time.FixedZone("UTC-7", -7*60*60))
+	if err := RunWithRegistryAndStorage(context.Background(), registry, "aws", "123456789012", now, &bytes.Buffer{}, &collectorTestWriter{}); err != nil {
+		t.Fatalf("RunWithRegistryAndStorage() error = %v", err)
+	}
+	wantStart := time.Date(2026, time.September, 24, 0, 0, 0, 0, time.UTC)
+	wantEnd := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
+	if !fake.request.StartTime.Equal(wantStart) || !fake.request.EndTime.Equal(wantEnd) {
+		t.Errorf("CollectRequest window = (%s, %s), want seven complete UTC days (%s, %s)", fake.request.StartTime, fake.request.EndTime, wantStart, wantEnd)
 	}
 }
 
