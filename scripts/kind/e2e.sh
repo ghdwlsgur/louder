@@ -123,9 +123,16 @@ if [[ "$mode" == storage ]]; then
     CLICKHOUSE_ADDR="127.0.0.1:$port" \
     CLICKHOUSE_DATABASE=finops \
     CLICKHOUSE_USERNAME=louder \
-    CLICKHOUSE_PASSWORD="$clickhouse_password" \
+  CLICKHOUSE_PASSWORD="$clickhouse_password" \
     GOCACHE="${GOCACHE:-/tmp/louder-go-build}" \
     go test ./internal/storage/clickhouse -run TestNativeReaderReturnsNormalizedFinalRecord -count=1
+  CLICKHOUSE_INTEGRATION=1 \
+    CLICKHOUSE_ADDR="127.0.0.1:$port" \
+    CLICKHOUSE_DATABASE=finops \
+    CLICKHOUSE_USERNAME=louder \
+    CLICKHOUSE_PASSWORD="$clickhouse_password" \
+    GOCACHE="${GOCACHE:-/tmp/louder-go-build}" \
+    go test ./internal/analyzer -run TestStoredBudgetProducesFakeNotifierIntents -count=1
   unset clickhouse_password
   exit
 fi
