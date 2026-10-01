@@ -56,6 +56,10 @@ spec:
                 required:
                 - enabled
                 type: object
+              schedule:
+                description: Schedule opts this policy into recurring Analyzer evaluation.
+                minLength: 1
+                type: string
               selector:
                 additionalProperties:
                   type: string
@@ -126,6 +130,17 @@ spec:
                   - status
                   - type
                   type: object
+                type: array
+              lastNotifiedMonth:
+                description: LastNotifiedMonth is the UTC billing month for the stored
+                  threshold receipts.
+                type: string
+              notifiedThresholds:
+                description: NotifiedThresholds contains thresholds delivered during
+                  LastNotifiedMonth.
+                items:
+                  format: int32
+                  type: integer
                 type: array
             type: object
         type: object

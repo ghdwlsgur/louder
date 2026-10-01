@@ -226,9 +226,9 @@ Run the Analyzer once for a BudgetPolicy with:
 ./bin/louder-analyzer --namespace=cloud-cost --budget-policy=sre-monthly
 ```
 
-After building the image, a Kubernetes Job can invoke `/louder-analyzer --namespace=cloud-cost --budget-policy=sre-monthly` with the namespace-scoped ServiceAccount permissions described below.
+After building the image, a Kubernetes Job can invoke `/louder-analyzer --namespace=cloud-cost --budget-policy=sre-monthly`. Setting `BudgetPolicy.spec.schedule` lets the Operator manage this Job through a namespaced CronJob and a dedicated ServiceAccount.
 
-The process also needs `CLICKHOUSE_ADDR`, `CLICKHOUSE_DATABASE`, `CLICKHOUSE_USERNAME`, `CLICKHOUSE_PASSWORD`, and optional `CLICKHOUSE_SECURE` environment variables. Workload manifests must provide these values from the namespace-local ClickHouse Secret with `envFrom`, and grant namespace-scoped `get`/`list` access to BudgetPolicies, CloudAccounts, NotificationPolicies, and `get` access to referenced Secrets. Do not schedule repeated runs until notification deduplication is available.
+The process also needs `CLICKHOUSE_ADDR`, `CLICKHOUSE_DATABASE`, `CLICKHOUSE_USERNAME`, `CLICKHOUSE_PASSWORD`, and optional `CLICKHOUSE_SECURE` environment variables. The managed CronJob provides these values from the namespace-local ClickHouse Secret with `envFrom`. Its dedicated ServiceAccount has namespace-scoped access to one BudgetPolicy and its status, CloudAccounts, NotificationPolicies, and referenced Secrets. Successful threshold percentages are recorded in BudgetPolicy status by UTC month to suppress repeats. If delivery succeeds but the status update fails, Kubernetes may retry the Job and send a duplicate; delivery is at-least-once.
 
 Store the complete Teams Workflows callback URL as `TEAMS_WEBHOOK_URL` in the referenced Secret. The callback URL contains its authentication material and must be sourced through Vault and External Secrets Operator; never put it in a `NotificationPolicy`, ConfigMap, fixture, or log. The notifier accepts HTTPS URLs only and does not follow redirects. Workflows are associated with their owners, so production setup must assign and maintain an owner who will remain responsible for the workflow.
 

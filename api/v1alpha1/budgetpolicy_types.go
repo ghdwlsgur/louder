@@ -15,13 +15,23 @@ type BudgetForecastSpec struct {
 }
 
 type BudgetPolicySpec struct {
-	Selector   map[string]string   `json:"selector"`
-	Amount     BudgetAmount        `json:"amount"`
-	Thresholds []int32             `json:"thresholds,omitempty"`
-	Forecast   *BudgetForecastSpec `json:"forecast,omitempty"`
+	Selector   map[string]string `json:"selector"`
+	Amount     BudgetAmount      `json:"amount"`
+	Thresholds []int32           `json:"thresholds,omitempty"`
+	// Schedule opts this policy into recurring Analyzer evaluation.
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	Schedule string              `json:"schedule,omitempty"`
+	Forecast *BudgetForecastSpec `json:"forecast,omitempty"`
 }
 
 type BudgetPolicyStatus struct {
+	// LastNotifiedMonth is the UTC billing month for the stored threshold receipts.
+	// +optional
+	LastNotifiedMonth string `json:"lastNotifiedMonth,omitempty"`
+	// NotifiedThresholds contains thresholds delivered during LastNotifiedMonth.
+	// +optional
+	NotifiedThresholds []int32 `json:"notifiedThresholds,omitempty"`
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
@@ -59,6 +69,9 @@ func (in *BudgetPolicy) DeepCopyInto(out *BudgetPolicy) {
 	if in.Spec.Forecast != nil {
 		out.Spec.Forecast = new(BudgetForecastSpec)
 		*out.Spec.Forecast = *in.Spec.Forecast
+	}
+	if in.Status.NotifiedThresholds != nil {
+		out.Status.NotifiedThresholds = append([]int32(nil), in.Status.NotifiedThresholds...)
 	}
 	if in.Status.Conditions != nil {
 		out.Status.Conditions = make([]metav1.Condition, len(in.Status.Conditions))

@@ -23,6 +23,7 @@ func main() {
 	var probeAddr string
 	var watchNamespace string
 	var collectorImage string
+	var analyzerImage string
 	var collectorFixtureMode bool
 	var collectorStorageSecretName string
 	var leaderElect bool
@@ -30,6 +31,7 @@ func main() {
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the health probes bind to.")
 	flag.StringVar(&watchNamespace, "watch-namespace", "cloud-cost", "The namespace containing CloudAccount resources and credential Secrets.")
 	flag.StringVar(&collectorImage, "collector-image", "", "The image containing the Collector executable.")
+	flag.StringVar(&analyzerImage, "analyzer-image", "", "The image containing the Analyzer executable. Defaults to --collector-image.")
 	flag.BoolVar(&collectorFixtureMode, "collector-fixture-mode", false, "Run synthetic embedded fixtures instead of provider APIs.")
 	flag.StringVar(&collectorStorageSecretName, "collector-storage-secret-name", "", "Optional Secret containing shared Collector storage credentials.")
 	flag.BoolVar(&leaderElect, "leader-elect", false, "Enable leader election for controller manager replicas.")
@@ -37,6 +39,9 @@ func main() {
 	if collectorImage == "" {
 		fmt.Fprintln(os.Stderr, "--collector-image is required")
 		os.Exit(2)
+	}
+	if analyzerImage == "" {
+		analyzerImage = collectorImage
 	}
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
@@ -59,6 +64,9 @@ func main() {
 	}
 
 	if err := (&controller.CloudAccountReconciler{CollectorImage: collectorImage, CollectorFixtureMode: collectorFixtureMode, CollectorStorageSecretName: collectorStorageSecretName}).SetupWithManager(mgr); err != nil {
+		os.Exit(1)
+	}
+	if err := (&controller.BudgetPolicyReconciler{AnalyzerImage: analyzerImage, StorageSecretName: collectorStorageSecretName, AnalyzerServiceAccountName: "louder-analyzer"}).SetupWithManager(mgr); err != nil {
 		os.Exit(1)
 	}
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

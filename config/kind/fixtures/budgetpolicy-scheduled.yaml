@@ -1,0 +1,14 @@
+apiVersion: finops.sre.local/v1alpha1
+kind: BudgetPolicy
+metadata:
+  name: kind-scheduled-budget
+  namespace: cloud-cost
+spec:
+  selector:
+    team: sre
+  amount:
+    value: 100
+    currency: USD
+  thresholds:
+    - 80
+  schedule: "0 0 1 1 *"

@@ -203,6 +203,8 @@ spec:
     - 90
     - 100
 
+  schedule: "0 * * * *"
+
   forecast:
     enabled: true
 ```
@@ -229,7 +231,7 @@ spec:
     - BudgetThreshold
 ```
 
-`spec.events` is required and lists the event types the policy subscribes to. A policy is selected only when its event list includes the emitted event and at least one relevant `CloudAccount.spec.metadata` entry matches every key in `spec.selector`. An empty selector matches any relevant account. The current Analyzer emits `BudgetThreshold`; the other enumerated event types are reserved for later Phase 1 event producers. The policy selector currently has a pure Analyzer resolver, while Kubernetes Secret resolution and scheduled delivery are not yet wired.
+`spec.events` is required and lists the event types the policy subscribes to. A policy is selected only when its event list includes the emitted event and at least one relevant `CloudAccount.spec.metadata` entry matches every key in `spec.selector`. An empty selector matches any relevant account. The current Analyzer emits `BudgetThreshold`; the other enumerated event types are reserved for later Phase 1 event producers. The one-shot Analyzer resolves the referenced same-namespace Secret at run time. A non-empty `BudgetPolicy.spec.schedule` creates an owned Analyzer CronJob; an empty value disables scheduled evaluation.
 
 ---
 
@@ -433,7 +435,7 @@ today - avg_7d > configured_absolute_threshold
 
 The Analyzer consumes normalized cost data only.
 
-The Analyzer provides a pure monthly budget evaluator and storage-backed service functions in `internal/analyzer`. It matches `BudgetPolicy.spec.selector` against `CloudAccount.spec.metadata`, requests the selected provider/account pairs for the current UTC month through the shared `storage.CostReader` interface, sums returned records in the policy currency, and returns intents for each reached percentage threshold. `EvaluateAndNotifyBudgetPolicies` intersects those accounts with matching `NotificationPolicy` selectors and event subscriptions, then fans notifications out through a caller-supplied resolver. The resolver boundary keeps Kubernetes Secret access out of Analyzer domain logic. `cmd/analyzer` is a one-shot runtime that loads one namespaced BudgetPolicy, CloudAccounts, NotificationPolicies, and referenced webhook Secrets, then reads ClickHouse through the existing cost reader. It is not scheduled yet; repeated invocations can resend thresholds until persisted deduplication is implemented.
+The Analyzer provides a pure monthly budget evaluator and storage-backed service functions in `internal/analyzer`. It matches `BudgetPolicy.spec.selector` against `CloudAccount.spec.metadata`, requests the selected provider/account pairs for the current UTC month through the shared `storage.CostReader` interface, sums returned records in the policy currency, and returns intents for each reached percentage threshold. `EvaluateAndNotifyBudgetPolicies` intersects those accounts with matching `NotificationPolicy` selectors and event subscriptions, then fans notifications out through a caller-supplied resolver. `cmd/analyzer` loads one namespaced BudgetPolicy, CloudAccounts, NotificationPolicies, and referenced webhook Secrets, then reads ClickHouse through the existing cost reader. BudgetPolicy status records successfully delivered threshold percentages for the current UTC month. The BudgetPolicy controller creates an Analyzer CronJob when a schedule is set and prevents overlapping runs; notification delivery is at-least-once if a status update fails after sending.
 
 It must not contain CSP API logic.
 
@@ -489,7 +491,7 @@ StdoutNotifier
 
 Tests must never require a real Teams channel.
 
-The first implementation lives in `internal/notifier`: a fake notifier supports local Analyzer tests, and `TeamsWebhookNotifier` sends Adaptive Cards through a Teams Workflows callback URL. It accepts the callback URL from trusted Secret configuration, requires HTTPS, disables redirects, and returns a stable error without including the URL or remote response body. Analyzer policy fanout accepts resolved Notifier instances through an injected resolver, but no scheduled workload or Kubernetes Secret resolver is wired yet.
+The first implementation lives in `internal/notifier`: a fake notifier supports local Analyzer tests, and `TeamsWebhookNotifier` sends Adaptive Cards through a Teams Workflows callback URL. It accepts the callback URL from trusted Secret configuration, requires HTTPS, disables redirects, and returns a stable error without including the URL or remote response body. Analyzer policy fanout accepts resolved Notifier instances through an injected resolver; the one-shot runtime resolves webhook Secrets only for selected policies, and the Operator manages a scheduled Analyzer CronJob per opted-in BudgetPolicy.
 
 ---
 

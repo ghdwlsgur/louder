@@ -27,6 +27,14 @@ rules:
   - apiGroups:
       - finops.sre.local
     resources:
+      - budgetpolicies
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - finops.sre.local
+    resources:
       - cloudaccounts/status
     verbs:
       - get
@@ -74,6 +82,61 @@ roleRef:
   kind: Role
   name: louder-operator
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: louder-analyzer
+  namespace: cloud-cost
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: louder-analyzer
+  namespace: cloud-cost
+rules:
+  - apiGroups:
+      - finops.sre.local
+    resources:
+      - budgetpolicies
+    verbs:
+      - get
+  - apiGroups:
+      - finops.sre.local
+    resources:
+      - budgetpolicies/status
+    verbs:
+      - get
+      - update
+      - patch
+  - apiGroups:
+      - finops.sre.local
+    resources:
+      - cloudaccounts
+      - notificationpolicies
+    verbs:
+      - list
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: louder-analyzer
+  namespace: cloud-cost
+subjects:
+  - kind: ServiceAccount
+    name: louder-analyzer
+    namespace: cloud-cost
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: louder-analyzer
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -107,6 +170,7 @@ spec:
             - --watch-namespace=cloud-cost
             - --metrics-bind-address=0
             - --collector-image=louder-operator:local
+            - --analyzer-image=louder-operator:local
             - --collector-fixture-mode=true
             - --collector-storage-secret-name=louder-clickhouse-credentials
           ports:

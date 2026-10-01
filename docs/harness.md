@@ -179,7 +179,7 @@ A normalization change must update tests intentionally.
 
 ## 6. Analyzer tests
 
-Analyzer tests must operate entirely on normalized data. The monthly budget evaluator tests selector matching, UTC month filtering, exact amount aggregation, threshold ordering, and safe errors for invalid policy input or currency mismatch. Its storage-backed service is tested with a fake `CostReader` for account scoping, UTC month bounds, no-match behavior, and read failures. `EvaluateAndNotifyBudget` uses `FakeNotifier` to verify notification payloads, no-send behavior below a threshold, and stopping after a delivery error. `SelectNotificationPolicies` tests event subscription, Teams type, CloudAccount metadata selectors, and deterministic policy ordering. Scheduled evaluation, Kubernetes Secret resolution, policy delivery, and persisted deduplication remain future runtime work.
+Analyzer tests must operate entirely on normalized data. The monthly budget evaluator tests selector matching, UTC month filtering, exact amount aggregation, threshold ordering, and safe errors for invalid policy input or currency mismatch. Its storage-backed service is tested with a fake `CostReader` for account scoping, UTC month bounds, no-match behavior, and read failures. `EvaluateAndNotifyBudget` uses `FakeNotifier` to verify notification payloads, no-send behavior below a threshold, and stopping after a delivery error. `SelectNotificationPolicies` tests event subscription, Teams type, CloudAccount metadata selectors, and deterministic policy ordering. `RunBudgetPolicy` additionally tests month-scoped threshold receipts and failure-before-recording behavior.
 
 Do not call live provider APIs.
 
@@ -213,7 +213,7 @@ Tests should verify notification intent, not Teams delivery.
 
 ## 7. Notifier coverage
 
-Notifier is abstracted so Analyzer tests can verify notification intent without sending real Teams messages. `internal/notifier` provides a `FakeNotifier` and tests the Teams Workflows HTTP request through an in-process transport; tests do not call a real tenant. The budget policy dispatch service tests NotificationPolicy selection, injected destination resolution, and fanout. `RunBudgetPolicy` tests namespace-scoped Kubernetes reads and referenced Secret handling with a fake client and notifier factory. Scheduled delivery and persisted deduplication are not implemented yet.
+Notifier is abstracted so Analyzer tests can verify notification intent without sending real Teams messages. `internal/notifier` provides a `FakeNotifier` and tests the Teams Workflows HTTP request through an in-process transport; tests do not call a real tenant. The budget policy dispatch service tests NotificationPolicy selection, injected destination resolution, and fanout. `RunBudgetPolicy` tests namespace-scoped Kubernetes reads, referenced Secret handling, month rollover, and threshold deduplication with a fake client and notifier factory.
 
 Required implementations:
 
@@ -332,7 +332,7 @@ The local targets cover distinct slices:
 |---|---|
 | `make kind-e2e` | CloudAccount missing-Secret status, CronJob creation, a completed fixture Collector Job, and `CollectionReady=True` status reporting |
 | `make kind-e2e-secrets` | Vault -> ESO -> Secret -> CloudAccount readiness and Vault failure/recovery; its CloudAccount keeps collection disabled |
-| `make kind-e2e-storage` | Fixture normalization, ClickHouse batch persistence and native reads, and budget threshold notification intent after replay |
+| `make kind-e2e-storage` | Fixture normalization, ClickHouse batch persistence and native reads, budget threshold notification intent, and the BudgetPolicy-owned Analyzer CronJob with its scoped ServiceAccount |
 
 These targets do not verify a production billing API or a single combined Vault/ESO/Collector/ClickHouse flow. The storage E2E uses runtime-generated synthetic ClickHouse credentials and an ephemeral database; it does not exercise production Vault provisioning.
 

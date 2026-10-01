@@ -41,8 +41,18 @@ func EvaluateAndNotifyBudgetPolicies(ctx context.Context, reader storage.CostRea
 	if err != nil || len(intents) == 0 {
 		return intents, err
 	}
+	if err := NotifyBudgetIntents(ctx, budget, intents, accounts, policies, resolve); err != nil {
+		return intents, err
+	}
+	return intents, nil
+}
+
+func NotifyBudgetIntents(ctx context.Context, budget v1alpha1.BudgetPolicy, intents []BudgetThresholdIntent, accounts []v1alpha1.CloudAccount, policies []v1alpha1.NotificationPolicy, resolve NotificationResolver) error {
+	if len(intents) == 0 {
+		return nil
+	}
 	if resolve == nil {
-		return intents, ErrNotifierRequired
+		return ErrNotifierRequired
 	}
 
 	budgetAccounts := make([]v1alpha1.CloudAccount, 0, len(accounts))
@@ -53,28 +63,28 @@ func EvaluateAndNotifyBudgetPolicies(ctx context.Context, reader storage.CostRea
 	}
 	selected := SelectNotificationPolicies("BudgetThreshold", policies, budgetAccounts)
 	if len(selected) == 0 {
-		return intents, ErrNotifierRequired
+		return ErrNotifierRequired
 	}
 
 	deliveries := make([]notifier.Notifier, 0, len(selected))
 	for _, policy := range selected {
 		delivery, err := resolve(ctx, policy)
 		if err != nil {
-			return intents, fmt.Errorf("%w: %s", ErrNotificationPolicyResolution, policy.Name)
+			return fmt.Errorf("%w: %s", ErrNotificationPolicyResolution, policy.Name)
 		}
 		if delivery == nil {
-			return intents, ErrNotifierRequired
+			return ErrNotifierRequired
 		}
 		deliveries = append(deliveries, delivery)
 	}
 	for _, delivery := range deliveries {
 		for _, intent := range intents {
 			if err := delivery.Send(ctx, budgetThresholdNotification(intent)); err != nil {
-				return intents, err
+				return err
 			}
 		}
 	}
-	return intents, nil
+	return nil
 }
 
 func budgetThresholdNotification(intent BudgetThresholdIntent) notifier.Notification {
