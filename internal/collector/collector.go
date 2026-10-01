@@ -43,7 +43,7 @@ func collectFixture(ctx context.Context, providerName, accountID, fixtureName st
 	if fixtureProvider != providerName {
 		return nil, fmt.Errorf("fixture provider does not match requested provider")
 	}
-	if providerName != "aws" && providerName != "gcp" && providerName != "azure" && providerName != "oci" {
+	if providerName != "aws" && providerName != "gcp" && providerName != "azure" && providerName != "oci" && providerName != "ibm" {
 		return nil, fmt.Errorf("unsupported fixture provider")
 	}
 

@@ -257,3 +257,17 @@ func TestRunEmitsOCICostFixtureAsJSONLines(t *testing.T) {
 		t.Errorf("record = %#v, want OCI fixture record with oci_cost basis", record)
 	}
 }
+
+func TestRunEmitsIBMBilledCostFixtureAsJSONLines(t *testing.T) {
+	var output bytes.Buffer
+	if err := Run(context.Background(), "ibm", "ibm-account-123", "embedded:ibm", &output); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	var record provider.RawCostRecord
+	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &record); err != nil {
+		t.Fatalf("output is not a JSON record: %v", err)
+	}
+	if record.Provider != "ibm" || record.BillingScope != "ibm-account-123" || record.CostBasis != provider.CostBasisIBMBilled || record.SourceRecordID == "" {
+		t.Errorf("record = %#v, want IBM billed-cost fixture record", record)
+	}
+}

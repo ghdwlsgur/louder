@@ -142,3 +142,16 @@ func TestNormalizePreservesOCICostBasisAndDecimal(t *testing.T) {
 		t.Errorf("Normalize() = %#v, want %#v", got, want)
 	}
 }
+
+func TestNormalizePreservesIBMBilledCostAndDecimal(t *testing.T) {
+	start := time.Date(2026, time.September, 29, 0, 0, 0, 0, time.UTC)
+	raw := provider.RawCostRecord{Provider: "ibm", SourceRecordID: "ibm-focus-ibm-account-123-2026-09-29-USD", BillingScope: "ibm-account-123", CostBasis: provider.CostBasisIBMBilled, Amount: "12.34567890123456789", Currency: "USD", UsageStart: start, UsageEnd: start.AddDate(0, 0, 1)}
+	got, err := Normalize(raw)
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	want := CostRecord{Provider: "ibm", BillingAccountID: raw.BillingScope, SourceRecordID: raw.SourceRecordID, CostBasis: provider.CostBasisIBMBilled, Amount: raw.Amount, Currency: raw.Currency, UsageStart: start, UsageEnd: start.AddDate(0, 0, 1)}
+	if got != want {
+		t.Errorf("Normalize() = %#v, want %#v", got, want)
+	}
+}
