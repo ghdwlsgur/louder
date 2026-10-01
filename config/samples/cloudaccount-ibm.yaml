@@ -1,0 +1,13 @@
+apiVersion: finops.sre.local/v1alpha1
+kind: CloudAccount
+metadata:
+  name: ibm-prod
+  namespace: cloud-cost
+spec:
+  provider: ibm
+  accountId: replace-with-ibm-cloud-account-id
+  credentialRef:
+    name: ibm-cost-reader
+  collection:
+    enabled: true
+    schedule: "0 0 * * *"

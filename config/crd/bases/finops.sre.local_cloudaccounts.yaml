@@ -90,6 +90,7 @@ spec:
                 - gcp
                 - azure
                 - oci
+                - ibm
                 type: string
               providerConfig:
                 additionalProperties:

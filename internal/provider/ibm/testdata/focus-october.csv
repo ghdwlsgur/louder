@@ -1,0 +1,2 @@
+BilledCost,BillingCurrency,ChargePeriodStart,ChargePeriodEnd,ServiceName
+4.25,USD,2026-10-01T00:00:00Z,2026-10-02T00:00:00Z,Storage

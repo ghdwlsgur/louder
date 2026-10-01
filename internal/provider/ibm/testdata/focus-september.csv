@@ -1,0 +1,2 @@
+BilledCost,BillingCurrency,ChargePeriodStart,ChargePeriodEnd,ServiceName
+12.34000000000000001,USD,2026-09-30T00:00:00Z,2026-10-01T00:00:00Z,Compute
