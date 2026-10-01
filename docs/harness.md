@@ -179,7 +179,7 @@ A normalization change must update tests intentionally.
 
 ## 6. Analyzer tests
 
-Analyzer tests must operate entirely on normalized data. The initial monthly budget evaluator tests selector matching, UTC month filtering, exact amount aggregation, threshold ordering, and safe errors for invalid policy input or currency mismatch. Its storage-backed service is tested with a fake `CostReader` for account scoping, UTC month bounds, no-match behavior, and read failures. It returns notification intents but does not yet invoke `FakeNotifier`; scheduled evaluation and notification delivery remain future runtime work. The broader Analyzer and integration harness should verify delivery intent through `FakeNotifier` when that runtime is added.
+Analyzer tests must operate entirely on normalized data. The monthly budget evaluator tests selector matching, UTC month filtering, exact amount aggregation, threshold ordering, and safe errors for invalid policy input or currency mismatch. Its storage-backed service is tested with a fake `CostReader` for account scoping, UTC month bounds, no-match behavior, and read failures. `EvaluateAndNotifyBudget` uses `FakeNotifier` to verify notification payloads, no-send behavior below a threshold, and stopping after a delivery error. Scheduled evaluation, NotificationPolicy resolution, and persisted deduplication remain future runtime work.
 
 Do not call live provider APIs.
 

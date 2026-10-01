@@ -432,7 +432,7 @@ today - avg_7d > configured_absolute_threshold
 
 The Analyzer consumes normalized cost data only.
 
-The first Analyzer slice provides a pure monthly budget evaluator and a storage-backed service function in `internal/analyzer`. It matches `BudgetPolicy.spec.selector` against `CloudAccount.spec.metadata`, requests the selected provider/account pairs for the current UTC month through the shared `storage.CostReader` interface, sums returned records in the policy currency, and returns intents for each reached percentage threshold. It does not create a ClickHouse client, run on a schedule, or send notifications; runtime wiring and delivery deduplication remain separate work.
+The first Analyzer slice provides a pure monthly budget evaluator and storage-backed service functions in `internal/analyzer`. It matches `BudgetPolicy.spec.selector` against `CloudAccount.spec.metadata`, requests the selected provider/account pairs for the current UTC month through the shared `storage.CostReader` interface, sums returned records in the policy currency, and returns intents for each reached percentage threshold. `EvaluateAndNotifyBudget` maps those intents to provider-neutral notifications and sends them through the `Notifier` interface. It does not create a ClickHouse client, run on a schedule, or resolve `NotificationPolicy`; runtime wiring and delivery deduplication remain separate work.
 
 It must not contain CSP API logic.
 

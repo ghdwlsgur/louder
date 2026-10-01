@@ -3,11 +3,13 @@ package analyzer
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/ghdwlsgur/louder/api/v1alpha1"
 	"github.com/ghdwlsgur/louder/internal/normalize"
+	"github.com/ghdwlsgur/louder/internal/notifier"
 	"github.com/ghdwlsgur/louder/internal/provider"
 	"github.com/ghdwlsgur/louder/internal/storage"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -202,6 +204,91 @@ func TestEvaluateStoredBudgetReturnsNoPartialIntentsOnReadError(t *testing.T) {
 	if len(intents) != 0 {
 		t.Errorf("intents = %#v, want no partial result", intents)
 	}
+}
+
+func TestEvaluateAndNotifyBudgetSendsReachedThreshold(t *testing.T) {
+	now := time.Date(2026, time.October, 5, 0, 0, 0, 0, time.UTC)
+	policy := v1alpha1.BudgetPolicy{ObjectMeta: metav1.ObjectMeta{Name: "sre-monthly"}, Spec: v1alpha1.BudgetPolicySpec{
+		Amount:     v1alpha1.BudgetAmount{Value: 100, Currency: "USD"},
+		Thresholds: []int32{80},
+	}}
+	accounts := []v1alpha1.CloudAccount{{Spec: v1alpha1.CloudAccountSpec{Provider: "aws", AccountID: "123"}}}
+	reader := &analyzerTestReader{records: []normalize.CostRecord{{
+		Provider: "aws", BillingAccountID: "123", Amount: "80.00", Currency: "USD", UsageStart: now.Add(-time.Hour),
+	}}}
+	fake := &notifier.FakeNotifier{}
+
+	intents, err := EvaluateAndNotifyBudget(context.Background(), reader, fake, policy, accounts, now)
+	if err != nil {
+		t.Fatalf("EvaluateAndNotifyBudget() error = %v", err)
+	}
+	if len(intents) != 1 || len(fake.Notifications) != 1 {
+		t.Fatalf("intents = %#v, notifications = %#v; want one of each", intents, fake.Notifications)
+	}
+	want := notifier.Notification{
+		Type: "BudgetThreshold", Severity: "Warning", Title: "Monthly budget threshold reached",
+		Summary: "Budget policy sre-monthly reached 80% of its monthly limit.",
+		Details: map[string]string{"Budget": "100", "Currency": "USD", "Spend": "80.00", "Threshold": "80%"},
+	}
+	if !reflect.DeepEqual(fake.Notifications[0], want) {
+		t.Errorf("notification = %#v, want %#v", fake.Notifications[0], want)
+	}
+}
+
+func TestEvaluateAndNotifyBudgetDoesNotNotifyBelowThreshold(t *testing.T) {
+	now := time.Date(2026, time.October, 5, 0, 0, 0, 0, time.UTC)
+	policy := v1alpha1.BudgetPolicy{Spec: v1alpha1.BudgetPolicySpec{
+		Amount:     v1alpha1.BudgetAmount{Value: 100, Currency: "USD"},
+		Thresholds: []int32{80},
+	}}
+	accounts := []v1alpha1.CloudAccount{{Spec: v1alpha1.CloudAccountSpec{Provider: "aws", AccountID: "123"}}}
+	reader := &analyzerTestReader{records: []normalize.CostRecord{{
+		Provider: "aws", BillingAccountID: "123", Amount: "79.99", Currency: "USD", UsageStart: now.Add(-time.Hour),
+	}}}
+	fake := &notifier.FakeNotifier{}
+
+	intents, err := EvaluateAndNotifyBudget(context.Background(), reader, fake, policy, accounts, now)
+	if err != nil {
+		t.Fatalf("EvaluateAndNotifyBudget() error = %v", err)
+	}
+	if len(intents) != 0 || len(fake.Notifications) != 0 {
+		t.Errorf("intents = %#v, notifications = %#v; want no threshold or notification", intents, fake.Notifications)
+	}
+}
+
+func TestEvaluateAndNotifyBudgetStopsAfterNotifierFailure(t *testing.T) {
+	now := time.Date(2026, time.October, 5, 0, 0, 0, 0, time.UTC)
+	policy := v1alpha1.BudgetPolicy{Spec: v1alpha1.BudgetPolicySpec{
+		Amount:     v1alpha1.BudgetAmount{Value: 100, Currency: "USD"},
+		Thresholds: []int32{50, 60, 70, 80},
+	}}
+	accounts := []v1alpha1.CloudAccount{{Spec: v1alpha1.CloudAccountSpec{Provider: "aws", AccountID: "123"}}}
+	reader := &analyzerTestReader{records: []normalize.CostRecord{{
+		Provider: "aws", BillingAccountID: "123", Amount: "90.00", Currency: "USD", UsageStart: now.Add(-time.Hour),
+	}}}
+	delivery := &failingAnalyzerNotifier{failAt: 2, err: errors.New("delivery failed")}
+
+	intents, err := EvaluateAndNotifyBudget(context.Background(), reader, delivery, policy, accounts, now)
+	if err == nil {
+		t.Fatal("EvaluateAndNotifyBudget() error = nil, want notifier error")
+	}
+	if len(intents) != 4 || len(delivery.attempts) != 2 {
+		t.Errorf("intents = %d, notifier attempts = %d; want four intents and stop after second attempt", len(intents), len(delivery.attempts))
+	}
+}
+
+type failingAnalyzerNotifier struct {
+	attempts []notifier.Notification
+	failAt   int
+	err      error
+}
+
+func (n *failingAnalyzerNotifier) Send(_ context.Context, notification notifier.Notification) error {
+	n.attempts = append(n.attempts, notification)
+	if len(n.attempts) == n.failAt {
+		return n.err
+	}
+	return nil
 }
 
 type analyzerTestReader struct {
