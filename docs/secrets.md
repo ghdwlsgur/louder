@@ -128,7 +128,7 @@ spec:
 
   collection:
     enabled: true
-    schedule: "0 */6 * * *"
+    schedule: "0 0 * * *"
 ```
 
 The CRD must not contain:

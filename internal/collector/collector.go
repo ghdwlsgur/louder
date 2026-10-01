@@ -77,7 +77,7 @@ func RunWithRegistry(ctx context.Context, registry *provider.Registry, providerN
 	if err != nil {
 		return err
 	}
-	start, end := PreviousCompleteUTCDay(now)
+	start, end := PreviousSevenCompleteUTCDays(now)
 	request := provider.CollectRequest{
 		AccountID:    accountID,
 		StartTime:    start,
@@ -95,7 +95,7 @@ func RunWithRegistryAndStorage(ctx context.Context, registry *provider.Registry,
 	if err != nil {
 		return err
 	}
-	start, end := PreviousCompleteUTCDay(now)
+	start, end := PreviousSevenCompleteUTCDays(now)
 	request := provider.CollectRequest{AccountID: accountID, StartTime: start, EndTime: end, CollectionID: providerName + ":" + accountID + ":" + start.Format("2006-01-02")}
 	return RunProviderWithStorage(ctx, cloudProvider, request, output, storage)
 }
