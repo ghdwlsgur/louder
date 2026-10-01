@@ -213,7 +213,7 @@ Tests should verify notification intent, not Teams delivery.
 
 ## 7. Notifier coverage
 
-Notifier must be abstracted so analyzer and integration tests can verify notification intent without sending real Teams messages. Notifier coverage is part of those test layers, not a separate harness layer.
+Notifier is abstracted so Analyzer tests can verify notification intent without sending real Teams messages. `internal/notifier` provides a `FakeNotifier` and tests the Teams Workflows HTTP request through an in-process transport; tests do not call a real tenant. Notification-policy resolution and scheduled delivery are not implemented yet.
 
 Required implementations:
 
