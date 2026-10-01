@@ -62,13 +62,21 @@ Provide daily NAVER Cloud Platform (NCP) cost signals for recurring cost anomaly
 
 ## Design decisions, risks, and open questions
 
+### Official source recheck (2026-10-02)
+
+- `getContractUsageListByDaily` accepts a daily date range (up to three months) and returns contract usage records. Its documented usage model includes quantity, unit, metering type, and contract identifiers, but no billed amount.
+- `getDemandCostList`, `getContractDemandCostList`, and `getProductDemandCostList` query billing amounts by month. Their amount, discount, and tax fields do not provide daily actual-cost granularity.
+- Cost Analysis is documented as refreshing the prior day's data each morning and supports console analysis and spreadsheet download. The reviewed public API catalog documents neither an unattended Cost Explorer cost-data endpoint nor a scheduled export endpoint suitable for the collector.
+- NCP's native budget notifications use previous-day cost data, which confirms an NCP-managed alerting path but does not expose a documented data feed for Louder to collect.
+- References rechecked: [daily contract usage API](https://api.ncloud-docs.com/docs/en/platform-costandusage-getcontractusagelistbydaily), [daily usage response model](https://api.ncloud-docs.com/docs/common-vapidatatype-contractusagebydaily), [monthly billing cost API](https://api.ncloud-docs.com/docs/en/platform-costandusage-getdemandcostlist), [Cost Analysis guide](https://guide.ncloud-docs.com/docs/en/costexplorer-costanalysis), and [Cost Explorer budgets](https://guide.ncloud-docs.com/docs/en/costexplorer-budget).
+- Decision: the adapter's source acceptance criteria are not met by the available evidence. Keep this plan pending until NCP documents an unattended daily actual-cost API/export or the account owner supplies an official integration contract that can be verified.
+
 - Official NCP docs describe `getContractUsageListByDaily` as daily contract usage, with usage quantities rather than a cost amount in its response model.
 - Official NCP docs describe `getContractDemandCostList`, `getProductDemandCostList`, and `getDemandCostList` as monthly billing-cost queries. These expose cost/discount fields but do not establish daily actual-cost values.
 - Public list-price APIs do not establish the exact effective price after negotiated pricing, discounts, credits, and billing adjustments. Joining those rates to usage would not be a verified substitute for billed costs.
 - The existing normalized record carries `UsageStart` and `UsageEnd`; daily records fit the anomaly analysis interval.
-- Open product decision: may the adapter calculate and label daily amounts as estimates using NCP daily usage and published prices, or must it wait for exact daily billed amounts?
+- The user requires actual daily costs for recurring anomaly detection; estimated daily amounts are not acceptable.
 - NCP's monthly cost endpoints must not be mapped to days. The daily usage endpoint's documented model contains usage quantities but no cost amount.
-- User decision: use actual daily costs for recurring anomaly detection; estimated daily costs are not acceptable.
 - The daily usage response includes contract product identifiers such as `priceNo` and `promiseNo`, but calculating from published prices would still produce estimates because NCP has free, flat, tiered, and package pricing as well as discounts and credits. Estimation is explicitly out of scope.
 - NCP Cost Explorer's console Cost Analysis is updated each morning from the previous day's usage and allows Excel export, but its public guide describes monthly cost views and the reviewed public developer API references do not document a Cost Explorer data API. A console-only/manual export does not satisfy unattended periodic collection.
 - Do not implement or register an NCP provider until an officially supported daily actual-cost feed is identified. If the user has a Cost Explorer integration endpoint or billing export not covered by public docs, request its official API reference or sanitized output sample.
@@ -85,3 +93,12 @@ Provide daily NAVER Cloud Platform (NCP) cost signals for recurring cost anomaly
 - `GOCACHE=/tmp/louder-go-cache make build`
 - `make kind-e2e` when Docker is available.
 - `git diff --check`
+
+## Research verification results (2026-10-02)
+
+- Reviewed the official NCP Cost and Usage API overview, daily contract usage API/schema, monthly cost APIs, Cost Analysis guide, and Cost Explorer budget guide linked above.
+- Confirmed that the daily usage schema has no cost amount and the documented cost APIs are monthly.
+- Confirmed that the reviewed Cost Explorer documentation describes console views, spreadsheet download, and native prior-day budget notifications, but no public unattended daily-cost collection API/export.
+- `git diff --check`: passed.
+- Provider tests, repository tests, vet, formatting, manifests, build, and kind E2E: not run because no provider code was changed and the required daily actual-cost source is still unavailable.
+- Status: pending upstream API/export evidence; no NCP adapter has been implemented or registered.
