@@ -89,6 +89,7 @@ spec:
                 - aws
                 - gcp
                 - azure
+                - oci
                 type: string
               providerConfig:
                 additionalProperties:

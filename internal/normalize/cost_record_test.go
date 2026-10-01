@@ -129,3 +129,16 @@ func validRawRecord() provider.RawCostRecord {
 		UsageEnd:       time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC),
 	}
 }
+
+func TestNormalizePreservesOCICostBasisAndDecimal(t *testing.T) {
+	start := time.Date(2026, time.September, 29, 0, 0, 0, 0, time.UTC)
+	raw := provider.RawCostRecord{Provider: "oci", SourceRecordID: "oci-usage-ocid1.tenancy.oc1..synthetic-2026-09-29-USD", BillingScope: "ocid1.tenancy.oc1..synthetic", CostBasis: provider.CostBasisOCI, Amount: "12.34567890123456789", Currency: "USD", UsageStart: start, UsageEnd: start.AddDate(0, 0, 1)}
+	got, err := Normalize(raw)
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	want := CostRecord{Provider: "oci", BillingAccountID: raw.BillingScope, SourceRecordID: raw.SourceRecordID, CostBasis: provider.CostBasisOCI, Amount: raw.Amount, Currency: raw.Currency, UsageStart: start, UsageEnd: start.AddDate(0, 0, 1)}
+	if got != want {
+		t.Errorf("Normalize() = %#v, want %#v", got, want)
+	}
+}

@@ -243,3 +243,17 @@ func (p *collectorTestProvider) CollectCosts(_ context.Context, request provider
 func (*collectorTestProvider) Metadata(context.Context) provider.ProviderMetadata {
 	return provider.ProviderMetadata{Name: "aws"}
 }
+
+func TestRunEmitsOCICostFixtureAsJSONLines(t *testing.T) {
+	var output bytes.Buffer
+	if err := Run(context.Background(), "oci", "ocid1.tenancy.oc1..synthetictenancy", "embedded:oci", &output); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	var record provider.RawCostRecord
+	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &record); err != nil {
+		t.Fatalf("output is not a JSON record: %v", err)
+	}
+	if record.Provider != "oci" || record.BillingScope != "ocid1.tenancy.oc1..synthetictenancy" || record.CostBasis != provider.CostBasisOCI || record.SourceRecordID == "" {
+		t.Errorf("record = %#v, want OCI fixture record with oci_cost basis", record)
+	}
+}

@@ -1,0 +1,12 @@
+[
+  {
+    "provider": "oci",
+    "sourceRecordId": "oci-usage-fixture-2026-01-01-USD",
+    "billingScope": "synthetic",
+    "costBasis": "oci_cost",
+    "amount": "12.34567890123456789",
+    "currency": "USD",
+    "usageStart": "2026-01-01T00:00:00Z",
+    "usageEnd": "2026-01-02T00:00:00Z"
+  }
+]
