@@ -138,7 +138,7 @@ if [[ "$mode" == storage ]]; then
     CLICKHOUSE_USERNAME=louder \
     CLICKHOUSE_PASSWORD="$clickhouse_password" \
     GOCACHE="${GOCACHE:-/tmp/louder-go-build}" \
-    go test ./internal/analyzer -run 'TestStored(DailyAnomaly|MonthlyNCPBudget|Budget)ProducesFakeNotifierIntents' -count=1
+    go test ./internal/analyzer -run 'TestStored(DailyAnomaly|MonthlyNCPBudget|Budget)ProducesFakeNotifierIntents|TestStoredDailyAnomalyRuntimeDeduplicates' -count=1
   unset clickhouse_password
   exit
 fi

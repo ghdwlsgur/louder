@@ -15,6 +15,9 @@ import (
 	"github.com/ghdwlsgur/louder/internal/storage/clickhouse"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 func TestStoredBudgetProducesFakeNotifierIntents(t *testing.T) {
@@ -160,5 +163,79 @@ func TestStoredDailyAnomalyProducesFakeNotifierIntents(t *testing.T) {
 	}}
 	if !reflect.DeepEqual(fake.Notifications, want) {
 		t.Errorf("notifications = %#v, want %#v", fake.Notifications, want)
+	}
+}
+
+func TestStoredDailyAnomalyRuntimeDeduplicates(t *testing.T) {
+	if os.Getenv("CLICKHOUSE_INTEGRATION") != "1" {
+		t.Skip("ClickHouse integration environment is not enabled")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	store, err := clickhouse.OpenFromEnv(ctx)
+	if err != nil {
+		t.Fatalf("OpenFromEnv() error = %v", err)
+	}
+	defer store.Close()
+
+	now := time.Date(2026, time.October, 9, 0, 2, 0, 0, time.UTC)
+	collected := metav1.NewTime(now)
+	budget := &v1alpha1.BudgetPolicy{ObjectMeta: metav1.ObjectMeta{Name: "daily-anomaly-runtime", Namespace: "cloud-cost"}, Spec: v1alpha1.BudgetPolicySpec{
+		Selector: map[string]string{"team": "sre"}, Amount: v1alpha1.BudgetAmount{Value: 1000, Currency: "USD"},
+		DailyAnomaly: &v1alpha1.DailyAnomalySpec{AbsoluteIncreaseThreshold: 10},
+	}}
+	account := &v1alpha1.CloudAccount{ObjectMeta: metav1.ObjectMeta{Name: "aws-daily-runtime", Namespace: "cloud-cost"}, Spec: v1alpha1.CloudAccountSpec{
+		Provider: "aws", AccountID: "daily-anomaly-runtime-kind-account", Metadata: map[string]string{"team": "sre"}, Collection: v1alpha1.CollectionSpec{Enabled: true},
+	}, Status: v1alpha1.CloudAccountStatus{LastSuccessfulCollectionTime: &collected}}
+	policy := &v1alpha1.NotificationPolicy{ObjectMeta: metav1.ObjectMeta{Name: "daily-runtime-teams", Namespace: "cloud-cost"}, Spec: v1alpha1.NotificationPolicySpec{
+		Type: "teams", Events: []string{"CostAnomaly"}, Selector: map[string]string{"team": "sre"}, CredentialRef: corev1.LocalObjectReference{Name: "daily-runtime-hook"},
+	}}
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "daily-runtime-hook", Namespace: "cloud-cost"}, Data: map[string][]byte{"TEAMS_WEBHOOK_URL": []byte("https://teams.example.test/hook")}}
+	scheme := runtime.NewScheme()
+	if err := v1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	kube := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(budget).WithObjects(budget, account, policy, secret).Build()
+	windowStart := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
+	records := make([]normalize.CostRecord, 0, 8)
+	for offset := 0; offset < 8; offset++ {
+		start := windowStart.AddDate(0, 0, offset)
+		amount := "10"
+		if offset == 7 {
+			amount = "30"
+		}
+		records = append(records, normalize.CostRecord{
+			Provider: "aws", BillingAccountID: "daily-anomaly-runtime-kind-account",
+			SourceRecordID: fmt.Sprintf("kind-daily-anomaly-runtime-aws-%s", start.Format("2006-01-02")),
+			CostBasis:      provider.CostBasisNet, Amount: amount, Currency: "USD",
+			UsageStart: start, UsageEnd: start.AddDate(0, 0, 1),
+		})
+	}
+	if err := store.WriteCosts(ctx, records); err != nil {
+		t.Fatalf("WriteCosts() error = %v", err)
+	}
+	delivery := &notifier.FakeNotifier{}
+	factory := func(string) (notifier.Notifier, error) { return delivery, nil }
+
+	for range 2 {
+		if _, err := RunBudgetPolicy(ctx, kube, store, "cloud-cost", "daily-anomaly-runtime", factory, now); err != nil {
+			t.Fatalf("RunBudgetPolicy() error = %v", err)
+		}
+	}
+	if len(delivery.Notifications) != 1 {
+		t.Fatalf("notifications = %#v, want one daily anomaly from ClickHouse after two runtime passes", delivery.Notifications)
+	}
+	if got := delivery.Notifications[0].Details["Date"]; got != "2026-10-08" {
+		t.Errorf("notification date = %q, want 2026-10-08", got)
+	}
+	var stored v1alpha1.BudgetPolicy
+	if err := kube.Get(ctx, types.NamespacedName{Namespace: "cloud-cost", Name: "daily-anomaly-runtime"}, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status.LastNotifiedAnomalyDate != "2026-10-08" {
+		t.Errorf("LastNotifiedAnomalyDate = %q, want 2026-10-08", stored.Status.LastNotifiedAnomalyDate)
 	}
 }
