@@ -109,6 +109,7 @@ if [[ "$mode" == storage ]]; then
   bash scripts/kind/assert-cloudaccount-missing-secret.sh
   bash scripts/kind/assert-collector-cronjob.sh
   COLLECTOR_JOB_NAME=kind-fixture-collector-replay bash scripts/kind/assert-collector-cronjob.sh
+  bash scripts/kind/assert-ncp-monthly-collector.sh
   bash scripts/kind/assert-clickhouse-storage.sh
   bash scripts/kind/assert-budgetpolicy-cronjob.sh
   port=19000
@@ -137,7 +138,7 @@ if [[ "$mode" == storage ]]; then
     CLICKHOUSE_USERNAME=louder \
     CLICKHOUSE_PASSWORD="$clickhouse_password" \
     GOCACHE="${GOCACHE:-/tmp/louder-go-build}" \
-    go test ./internal/analyzer -run TestStoredBudgetProducesFakeNotifierIntents -count=1
+    go test ./internal/analyzer -run 'TestStored(MonthlyNCPBudget|Budget)ProducesFakeNotifierIntents' -count=1
   unset clickhouse_password
   exit
 fi

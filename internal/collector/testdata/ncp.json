@@ -1,12 +1,12 @@
 [
   {
     "provider": "ncp",
-    "sourceRecordId": "ncp-monthly-synthetic-ncp-account-2026-09-KRW",
+    "sourceRecordId": "ncp-monthly-2760000-2026-10-KRW",
     "billingScope": "fixture-ncp-account",
     "costBasis": "ncp_monthly_invoice_cost",
     "amount": "12345.67",
     "currency": "KRW",
-    "usageStart": "2026-09-01T00:00:00Z",
-    "usageEnd": "2026-10-01T00:00:00Z"
+    "usageStart": "2026-10-01T00:00:00Z",
+    "usageEnd": "2026-11-01T00:00:00Z"
   }
 ]
