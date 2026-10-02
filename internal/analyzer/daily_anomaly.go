@@ -41,7 +41,7 @@ func EvaluateDailyCostAnomalies(policyName string, selector map[string]string, a
 	}
 	selected := make(map[accountKey]struct{})
 	for _, account := range accounts {
-		if account.Spec.Provider == "" || account.Spec.AccountID == "" || !matchesSelector(account.Spec.Metadata, selector) {
+		if !provider.ProvidesDailyCostRecords(account.Spec.Provider) || account.Spec.AccountID == "" || !matchesSelector(account.Spec.Metadata, selector) {
 			continue
 		}
 		selected[accountKey{provider: account.Spec.Provider, accountID: account.Spec.AccountID}] = struct{}{}
@@ -147,7 +147,7 @@ func EvaluateStoredDailyCostAnomalies(ctx context.Context, reader storage.CostRe
 	selectedAccounts := make([]v1alpha1.CloudAccount, 0, len(accounts))
 	scopes := make([]storage.AccountScope, 0, len(accounts))
 	for _, account := range accounts {
-		if !account.Spec.Collection.Enabled || account.Spec.Provider == "" || account.Spec.AccountID == "" || !matchesSelector(account.Spec.Metadata, policy.Spec.Selector) {
+		if !account.Spec.Collection.Enabled || !provider.ProvidesDailyCostRecords(account.Spec.Provider) || account.Spec.AccountID == "" || !matchesSelector(account.Spec.Metadata, policy.Spec.Selector) {
 			continue
 		}
 		if account.Status.LastSuccessfulCollectionTime == nil || account.Status.LastSuccessfulCollectionTime.Time.Before(windowEnd) {

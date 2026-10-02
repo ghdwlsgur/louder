@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -66,15 +67,23 @@ func TestBudgetPolicyReconcileCreatesAnalyzerCronJob(t *testing.T) {
 	if actual.Spec.JobTemplate.Spec.Template.Spec.AutomountServiceAccountToken == nil || !*actual.Spec.JobTemplate.Spec.Template.Spec.AutomountServiceAccountToken {
 		t.Error("Analyzer pod must mount its namespace-scoped Kubernetes API token")
 	}
+	actual.Spec.Suspend = ptr.To(false)
+	actual.Spec.JobTemplate.Spec.Template.Spec.DNSPolicy = corev1.DNSClusterFirst
+	if err := kube.Update(context.Background(), &actual); err != nil {
+		t.Fatal(err)
+	}
 	resourceVersion := actual.ResourceVersion
 	if _, err := reconciler.Reconcile(context.Background(), request); err != nil {
-		t.Fatalf("idempotent Reconcile() error = %v", err)
+		t.Fatalf("Reconcile() with API-defaulted fields error = %v", err)
 	}
 	if err := kube.Get(context.Background(), types.NamespacedName{Namespace: budget.Namespace, Name: actual.Name}, &actual); err != nil {
 		t.Fatal(err)
 	}
 	if actual.ResourceVersion != resourceVersion {
-		t.Errorf("idempotent reconcile changed resourceVersion from %q to %q", resourceVersion, actual.ResourceVersion)
+		t.Errorf("reconcile changed resourceVersion from %q to %q for API-defaulted fields", resourceVersion, actual.ResourceVersion)
+	}
+	if actual.Spec.Suspend == nil || *actual.Spec.Suspend != false || actual.Spec.JobTemplate.Spec.Template.Spec.DNSPolicy != corev1.DNSClusterFirst {
+		t.Errorf("API defaults were not preserved: suspend=%v dnsPolicy=%q", actual.Spec.Suspend, actual.Spec.JobTemplate.Spec.Template.Spec.DNSPolicy)
 	}
 }
 

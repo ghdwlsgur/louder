@@ -20,6 +20,13 @@ type DailyAnomalySpec struct {
 	AbsoluteIncreaseThreshold int64 `json:"absoluteIncreaseThreshold"`
 }
 
+type DailyAnomalyNotificationReceipt struct {
+	Date                   string `json:"date"`
+	Provider               string `json:"provider"`
+	BillingAccountID       string `json:"billingAccountId"`
+	NotificationPolicyName string `json:"notificationPolicyName"`
+}
+
 type BudgetPolicySpec struct {
 	Selector     map[string]string `json:"selector"`
 	Amount       BudgetAmount      `json:"amount"`
@@ -42,6 +49,9 @@ type BudgetPolicyStatus struct {
 	// LastNotifiedAnomalyDate is the latest completed UTC date delivered for daily cost anomalies.
 	// +optional
 	LastNotifiedAnomalyDate string `json:"lastNotifiedAnomalyDate,omitempty"`
+	// NotifiedDailyAnomalies records delivered daily anomalies per account and notification destination for the evaluated UTC date.
+	// +optional
+	NotifiedDailyAnomalies []DailyAnomalyNotificationReceipt `json:"notifiedDailyAnomalies,omitempty"`
 	// LastNotifiedForecastMonth is the UTC month for the last successfully delivered budget forecast.
 	// +optional
 	LastNotifiedForecastMonth string `json:"lastNotifiedForecastMonth,omitempty"`
@@ -89,6 +99,9 @@ func (in *BudgetPolicy) DeepCopyInto(out *BudgetPolicy) {
 	}
 	if in.Status.NotifiedThresholds != nil {
 		out.Status.NotifiedThresholds = append([]int32(nil), in.Status.NotifiedThresholds...)
+	}
+	if in.Status.NotifiedDailyAnomalies != nil {
+		out.Status.NotifiedDailyAnomalies = append([]DailyAnomalyNotificationReceipt(nil), in.Status.NotifiedDailyAnomalies...)
 	}
 	if in.Status.Conditions != nil {
 		out.Status.Conditions = make([]metav1.Condition, len(in.Status.Conditions))

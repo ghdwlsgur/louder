@@ -153,6 +153,26 @@ spec:
                 description: LastNotifiedMonth is the UTC billing month for the stored
                   threshold receipts.
                 type: string
+              notifiedDailyAnomalies:
+                description: NotifiedDailyAnomalies records delivered daily anomalies
+                  per account and notification destination for the evaluated UTC date.
+                items:
+                  properties:
+                    billingAccountId:
+                      type: string
+                    date:
+                      type: string
+                    notificationPolicyName:
+                      type: string
+                    provider:
+                      type: string
+                  required:
+                  - billingAccountId
+                  - date
+                  - notificationPolicyName
+                  - provider
+                  type: object
+                type: array
               notifiedThresholds:
                 description: NotifiedThresholds contains thresholds delivered during
                   LastNotifiedMonth.

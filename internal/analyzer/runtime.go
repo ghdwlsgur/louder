@@ -3,7 +3,6 @@ package analyzer
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sort"
 	"time"
 
@@ -45,6 +44,7 @@ func RunBudgetPolicy(ctx context.Context, kube client.Client, reader storage.Cos
 		return nil, err
 	}
 	month := now.UTC().Format("2006-01")
+	var runErrors []error
 	intents = pendingBudgetThresholds(intents, budget.Status, month)
 	resolve := func(ctx context.Context, policy v1alpha1.NotificationPolicy) (notifier.Notifier, error) {
 		if newTeamsNotifier == nil {
@@ -62,51 +62,75 @@ func RunBudgetPolicy(ctx context.Context, kube client.Client, reader storage.Cos
 	}
 	if len(intents) > 0 {
 		if err := NotifyBudgetIntents(ctx, budget, intents, accounts.Items, policies.Items, resolve); err != nil {
-			return intents, err
-		}
-		notified := append([]int32(nil), intentsToPercentages(intents)...)
-		if budget.Status.LastNotifiedMonth == month {
-			notified = append(notified, budget.Status.NotifiedThresholds...)
-		}
-		sort.Slice(notified, func(i, j int) bool { return notified[i] < notified[j] })
-		budget.Status.LastNotifiedMonth = month
-		budget.Status.NotifiedThresholds = compactThresholds(notified)
-		if err := kube.Status().Update(ctx, &budget); err != nil {
-			return intents, fmt.Errorf("%w", ErrBudgetNotificationStatusUpdate)
+			runErrors = append(runErrors, err)
+		} else {
+			notified := append([]int32(nil), intentsToPercentages(intents)...)
+			if budget.Status.LastNotifiedMonth == month {
+				notified = append(notified, budget.Status.NotifiedThresholds...)
+			}
+			sort.Slice(notified, func(i, j int) bool { return notified[i] < notified[j] })
+			budget.Status.LastNotifiedMonth = month
+			budget.Status.NotifiedThresholds = compactThresholds(notified)
+			if err := kube.Status().Update(ctx, &budget); err != nil {
+				runErrors = append(runErrors, ErrBudgetNotificationStatusUpdate)
+			}
 		}
 	}
 	forecastIntent, err := EvaluateStoredBudgetForecast(ctx, reader, budget, accounts.Items, now)
 	if err != nil {
-		return intents, err
-	}
-	if forecastIntent != nil && budget.Status.LastNotifiedForecastMonth != month {
+		runErrors = append(runErrors, err)
+	} else if forecastIntent != nil && budget.Status.LastNotifiedForecastMonth != month {
 		if err := NotifyBudgetForecastIntent(ctx, budget, *forecastIntent, accounts.Items, policies.Items, resolve); err != nil {
-			return intents, err
-		}
-		budget.Status.LastNotifiedForecastMonth = month
-		if err := kube.Status().Update(ctx, &budget); err != nil {
-			return intents, fmt.Errorf("%w", ErrBudgetNotificationStatusUpdate)
+			runErrors = append(runErrors, err)
+		} else {
+			budget.Status.LastNotifiedForecastMonth = month
+			if err := kube.Status().Update(ctx, &budget); err != nil {
+				runErrors = append(runErrors, ErrBudgetNotificationStatusUpdate)
+			}
 		}
 	}
 	anomalyIntents, err := EvaluateStoredDailyCostAnomalies(ctx, reader, budget, accounts.Items, now)
 	if err != nil {
-		return intents, err
+		runErrors = append(runErrors, err)
+	} else if len(anomalyIntents) > 0 {
+		receipts, notifyErr := NotifyDailyAnomalyIntentsWithReceipts(ctx, budget, anomalyIntents, accounts.Items, policies.Items, resolve, budget.Status.NotifiedDailyAnomalies)
+		if len(receipts) > 0 {
+			anomalyDate := anomalyIntents[0].Date.UTC().Format("2006-01-02")
+			budget.Status.NotifiedDailyAnomalies = mergeDailyAnomalyReceipts(budget.Status.NotifiedDailyAnomalies, receipts, anomalyDate)
+			budget.Status.LastNotifiedAnomalyDate = anomalyDate
+			if err := kube.Status().Update(ctx, &budget); err != nil {
+				runErrors = append(runErrors, ErrBudgetNotificationStatusUpdate)
+			}
+		}
+		if notifyErr != nil {
+			runErrors = append(runErrors, notifyErr)
+		}
 	}
-	if len(anomalyIntents) == 0 {
-		return intents, nil
+	return intents, errors.Join(runErrors...)
+}
+
+func mergeDailyAnomalyReceipts(existing, delivered []v1alpha1.DailyAnomalyNotificationReceipt, date string) []v1alpha1.DailyAnomalyNotificationReceipt {
+	merged := make([]v1alpha1.DailyAnomalyNotificationReceipt, 0, len(existing)+len(delivered))
+	for _, receipt := range existing {
+		if receipt.Date == date && !hasDailyAnomalyReceipt(merged, receipt) {
+			merged = append(merged, receipt)
+		}
 	}
-	anomalyDate := anomalyIntents[0].Date.Format("2006-01-02")
-	if budget.Status.LastNotifiedAnomalyDate == anomalyDate {
-		return intents, nil
+	for _, receipt := range delivered {
+		if receipt.Date == date && !hasDailyAnomalyReceipt(merged, receipt) {
+			merged = append(merged, receipt)
+		}
 	}
-	if err := NotifyDailyAnomalyIntents(ctx, budget, anomalyIntents, accounts.Items, policies.Items, resolve); err != nil {
-		return intents, err
-	}
-	budget.Status.LastNotifiedAnomalyDate = anomalyDate
-	if err := kube.Status().Update(ctx, &budget); err != nil {
-		return intents, fmt.Errorf("%w", ErrBudgetNotificationStatusUpdate)
-	}
-	return intents, nil
+	sort.Slice(merged, func(i, j int) bool {
+		if merged[i].Provider != merged[j].Provider {
+			return merged[i].Provider < merged[j].Provider
+		}
+		if merged[i].BillingAccountID != merged[j].BillingAccountID {
+			return merged[i].BillingAccountID < merged[j].BillingAccountID
+		}
+		return merged[i].NotificationPolicyName < merged[j].NotificationPolicyName
+	})
+	return merged
 }
 
 func pendingBudgetThresholds(intents []BudgetThresholdIntent, status v1alpha1.BudgetPolicyStatus, month string) []BudgetThresholdIntent {

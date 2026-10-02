@@ -10,6 +10,7 @@ import (
 	"github.com/ghdwlsgur/louder/api/v1alpha1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -60,8 +61,11 @@ func (r *BudgetPolicyReconciler) reconcileAnalyzerCronJob(ctx context.Context, p
 	if owner == nil || owner.UID != policy.UID {
 		return fmt.Errorf("CronJob %s/%s is not controlled by BudgetPolicy %s/%s", current.Namespace, current.Name, policy.Namespace, policy.Name)
 	}
-	if !reflect.DeepEqual(current.Spec, desired.Spec) || !reflect.DeepEqual(current.Labels, desired.Labels) || !reflect.DeepEqual(current.OwnerReferences, desired.OwnerReferences) {
-		current.Spec = desired.Spec
+	specChanged := !apiequality.Semantic.DeepDerivative(desired.Spec, current.Spec)
+	if specChanged || !reflect.DeepEqual(current.Labels, desired.Labels) || !reflect.DeepEqual(current.OwnerReferences, desired.OwnerReferences) {
+		if specChanged {
+			current.Spec = desired.Spec
+		}
 		current.Labels = desired.Labels
 		current.OwnerReferences = desired.OwnerReferences
 		return r.Update(ctx, &current)
