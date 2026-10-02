@@ -322,7 +322,7 @@ embedded fixture Collector
 assert JSON Lines output
 ```
 
-The Collector has daily adapters for AWS, GCP, Azure, OCI, IBM Cloud, and Alibaba Cloud, plus a monthly invoice adapter for NCP. Unit and provider contract tests use synthetic API responses; the local kind flow stays offline and exercises embedded fixtures without CSP credentials. `make kind-e2e-storage` additionally starts an ephemeral ClickHouse instance, applies the checked-in schema, runs the AWS fixture twice and the NCP monthly fixture through Operator-created Collector Jobs, and checks AWS replay deduplication. It verifies the NCP invoice basis, amount, currency, and month interval in Collector output, then reads the stored NCP fixture through the native ClickHouse reader and evaluates it against a monthly budget with `FakeNotifier`. This verifies the cost-to-notification path without CSP access or a real Teams tenant.
+The Collector has daily adapters for AWS, GCP, Azure, OCI, IBM Cloud, and Alibaba Cloud, plus a monthly invoice adapter for NCP. Unit and provider contract tests use synthetic API responses; the local kind flow stays offline and exercises embedded fixtures without CSP credentials. `make kind-e2e-storage` additionally starts an ephemeral ClickHouse instance, applies the checked-in schema, runs the AWS fixture twice and the NCP monthly fixture through Operator-created Collector Jobs, and checks AWS replay deduplication. It verifies the NCP invoice basis, amount, currency, and month interval in Collector output, reads the stored NCP fixture through the native ClickHouse reader, and evaluates it against a monthly budget with `FakeNotifier`. A ClickHouse integration test also reads a synthetic AWS target day and seven-day baseline, then verifies the `CostAnomaly` payload through `FakeNotifier`. This verifies the cost-to-notification path without CSP access or a real Teams tenant.
 
 The kind E2E scripts default to cluster name `louder-e2e`. Set `KIND_CLUSTER_NAME` to run against a separate disposable cluster, for example `KIND_CLUSTER_NAME=louder-e2e-local make kind-e2e`. A cluster that already has the selected name is never replaced.
 
@@ -332,7 +332,7 @@ The local targets cover distinct slices:
 |---|---|
 | `make kind-e2e` | CloudAccount missing-Secret status, CronJob creation, a completed fixture Collector Job, and `CollectionReady=True` status reporting |
 | `make kind-e2e-secrets` | Vault -> ESO -> Secret -> CloudAccount readiness and Vault failure/recovery; its CloudAccount keeps collection disabled |
-| `make kind-e2e-storage` | AWS replay deduplication, NCP monthly fixture collection and ClickHouse read, monthly NCP budget notification intent, and the BudgetPolicy-owned Analyzer CronJob with its scoped ServiceAccount |
+| `make kind-e2e-storage` | AWS replay deduplication, NCP monthly collection/read/budget alert, stored daily anomaly evaluation and `CostAnomaly` payload, and the BudgetPolicy-owned Analyzer CronJob with its scoped ServiceAccount |
 
 These targets do not verify a production billing API or a single combined Vault/ESO/Collector/ClickHouse flow. The storage E2E uses runtime-generated synthetic ClickHouse credentials and an ephemeral database; it does not exercise production Vault provisioning.
 
