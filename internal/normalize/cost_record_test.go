@@ -168,3 +168,24 @@ func TestNormalizePreservesAlibabaPretaxCostAndDecimal(t *testing.T) {
 		t.Errorf("Normalize() = %#v, want %#v", got, want)
 	}
 }
+
+func TestNormalizePreservesNCPMonthlyInvoiceCostPeriod(t *testing.T) {
+	start := time.Date(2026, time.September, 1, 0, 0, 0, 0, time.UTC)
+	raw := provider.RawCostRecord{
+		Provider: "ncp", SourceRecordID: "ncp-monthly-2760000-2026-09-KRW", BillingScope: "2760000",
+		CostBasis: provider.CostBasisNCPMonthly, Amount: "12345.67", Currency: "KRW",
+		UsageStart: start, UsageEnd: start.AddDate(0, 1, 0),
+	}
+	got, err := Normalize(raw)
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	want := CostRecord{
+		Provider: "ncp", BillingAccountID: "2760000", SourceRecordID: raw.SourceRecordID,
+		CostBasis: provider.CostBasisNCPMonthly, Amount: raw.Amount, Currency: raw.Currency,
+		UsageStart: start, UsageEnd: start.AddDate(0, 1, 0),
+	}
+	if got != want {
+		t.Fatalf("Normalize() = %#v, want %#v", got, want)
+	}
+}

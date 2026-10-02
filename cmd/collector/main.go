@@ -16,6 +16,7 @@ import (
 	azureprovider "github.com/ghdwlsgur/louder/internal/provider/azure"
 	gcpprovider "github.com/ghdwlsgur/louder/internal/provider/gcp"
 	ibmprovider "github.com/ghdwlsgur/louder/internal/provider/ibm"
+	ncpprovider "github.com/ghdwlsgur/louder/internal/provider/ncp"
 	ociprovider "github.com/ghdwlsgur/louder/internal/provider/oci"
 	"github.com/ghdwlsgur/louder/internal/storage/clickhouse"
 )
@@ -87,6 +88,9 @@ func runLive(ctx context.Context, providerName, accountID string, providerConfig
 		return err
 	}
 	if err := registry.Register("ibm", func() (provider.Provider, error) { return ibmprovider.New(), nil }); err != nil {
+		return err
+	}
+	if err := registry.Register("ncp", func() (provider.Provider, error) { return ncpprovider.New(), nil }); err != nil {
 		return err
 	}
 	if err := registry.Register("alibaba", func() (provider.Provider, error) { return alibabaprovider.New(), nil }); err != nil {

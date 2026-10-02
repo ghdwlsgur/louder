@@ -92,6 +92,7 @@ spec:
                 - oci
                 - ibm
                 - alibaba
+                - ncp
                 type: string
               providerConfig:
                 additionalProperties:

@@ -48,6 +48,28 @@ func TestEvaluateBudgetReturnsReachedThreshold(t *testing.T) {
 	}
 }
 
+func TestEvaluateBudgetCountsNCPMonthlyInvoiceOnce(t *testing.T) {
+	now := time.Date(2026, time.October, 15, 12, 0, 0, 0, time.UTC)
+	policy := v1alpha1.BudgetPolicy{ObjectMeta: metav1.ObjectMeta{Name: "ncp-monthly"}, Spec: v1alpha1.BudgetPolicySpec{
+		Selector: map[string]string{"team": "sre"}, Amount: v1alpha1.BudgetAmount{Value: 100000, Currency: "KRW"}, Thresholds: []int32{80},
+	}}
+	accounts := []v1alpha1.CloudAccount{{Spec: v1alpha1.CloudAccountSpec{Provider: "ncp", AccountID: "2760000", Metadata: map[string]string{"team": "sre"}}}}
+	monthStart := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
+	records := []normalize.CostRecord{{
+		Provider: "ncp", BillingAccountID: "2760000", SourceRecordID: "ncp-monthly-2760000-2026-10-KRW",
+		CostBasis: provider.CostBasisNCPMonthly, Amount: "85000", Currency: "KRW", UsageStart: monthStart, UsageEnd: monthStart.AddDate(0, 1, 0),
+	}}
+
+	intents, err := EvaluateBudget(policy, accounts, records, now)
+	if err != nil {
+		t.Fatalf("EvaluateBudget() error = %v", err)
+	}
+	want := []BudgetThresholdIntent{{PolicyName: "ncp-monthly", ThresholdPercent: 80, Spent: "85000", Budget: 100000, Currency: "KRW"}}
+	if !reflect.DeepEqual(intents, want) {
+		t.Fatalf("EvaluateBudget() = %#v, want %#v", intents, want)
+	}
+}
+
 func TestEvaluateBudgetExcludesUnselectedAndOutOfMonthRecords(t *testing.T) {
 	now := time.Date(2026, time.October, 1, 12, 0, 0, 0, time.UTC)
 	policy := v1alpha1.BudgetPolicy{Spec: v1alpha1.BudgetPolicySpec{

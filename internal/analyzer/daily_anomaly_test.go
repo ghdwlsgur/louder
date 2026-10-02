@@ -30,6 +30,25 @@ func TestEvaluateDailyCostAnomaliesReportsRelativeAndAbsoluteIncrease(t *testing
 	}
 }
 
+func TestEvaluateDailyCostAnomaliesIgnoresMonthlyCostRecords(t *testing.T) {
+	targetDay := time.Date(2026, time.October, 2, 0, 0, 0, 0, time.UTC)
+	records := append(anomalyRecords(targetDay, "25.00"), normalize.CostRecord{
+		Provider: "ncp", BillingAccountID: "2760000", SourceRecordID: "ncp-monthly-2760000-2026-10-KRW",
+		CostBasis: provider.CostBasisNCPMonthly, Amount: "100000", Currency: "KRW",
+		UsageStart: time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC),
+		UsageEnd:   time.Date(2026, time.November, 1, 0, 0, 0, 0, time.UTC),
+	})
+	accounts := append(anomalyAccounts(), v1alpha1.CloudAccount{Spec: v1alpha1.CloudAccountSpec{Provider: "ncp", AccountID: "2760000", Metadata: map[string]string{"team": "sre"}}})
+
+	got, err := EvaluateDailyCostAnomalies("sre-monthly", anomalySelector(), accounts, records, targetDay, v1alpha1.BudgetAmount{Value: 5, Currency: "USD"})
+	if err != nil {
+		t.Fatalf("EvaluateDailyCostAnomalies() error = %v, want monthly rows ignored", err)
+	}
+	if len(got) != 1 || got[0].Provider != "aws" {
+		t.Fatalf("EvaluateDailyCostAnomalies() = %#v, want only the daily AWS anomaly", got)
+	}
+}
+
 func TestEvaluateDailyCostAnomaliesRequiresAbsoluteIncrease(t *testing.T) {
 	targetDay := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
 	got, err := EvaluateDailyCostAnomalies("sre-monthly", anomalySelector(), anomalyAccounts(), anomalyRecords(targetDay, "16.00"), targetDay, v1alpha1.BudgetAmount{Value: 7, Currency: "USD"})

@@ -154,6 +154,39 @@ func TestGeneratedNotificationPolicySchemaRequiresSupportedEvents(t *testing.T) 
 	}
 }
 
+func TestGeneratedCloudAccountSchemaAcceptsNCP(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("..", "..", "config", "crd", "bases", "finops.sre.local_cloudaccounts.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	jsonData, err := utilyaml.ToJSON(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var definition struct {
+		Spec struct {
+			Versions []struct {
+				Schema struct {
+					OpenAPIV3Schema struct {
+						Properties map[string]struct {
+							Properties map[string]struct {
+								Enum []string `json:"enum"`
+							} `json:"properties"`
+						} `json:"properties"`
+					} `json:"openAPIV3Schema"`
+				} `json:"schema"`
+			} `json:"versions"`
+		} `json:"spec"`
+	}
+	if err := json.Unmarshal(jsonData, &definition); err != nil {
+		t.Fatal(err)
+	}
+	providerValues := definition.Spec.Versions[0].Schema.OpenAPIV3Schema.Properties["spec"].Properties["provider"].Enum
+	if !contains(providerValues, "ncp") {
+		t.Errorf("provider enum = %#v, want ncp", providerValues)
+	}
+}
+
 func contains(values []string, expected string) bool {
 	for _, value := range values {
 		if value == expected {

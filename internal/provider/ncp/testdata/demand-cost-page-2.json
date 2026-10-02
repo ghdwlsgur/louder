@@ -1,0 +1,1 @@
+{"getDemandCostListResponse":{"totalRows":2,"demandCostList":[{"memberNo":"2760000","demandMonth":"202610","thisMonthAmountIncludingVat":4.25,"payCurrency":{"code":"USD"}}],"returnCode":"0","returnMessage":"success"}}
