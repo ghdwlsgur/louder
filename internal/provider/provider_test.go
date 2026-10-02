@@ -95,3 +95,19 @@ func TestIsUTCMidnight(t *testing.T) {
 		})
 	}
 }
+
+func TestProvidesDailyCostRecords(t *testing.T) {
+	for _, test := range []struct {
+		provider string
+		want     bool
+	}{
+		{"aws", true}, {"azure", true}, {"gcp", true}, {"oci", true}, {"ibm", true}, {"alibaba", true},
+		{"ncp", false}, {"nhn", false}, {"unknown", false},
+	} {
+		t.Run(test.provider, func(t *testing.T) {
+			if got := ProvidesDailyCostRecords(test.provider); got != test.want {
+				t.Fatalf("ProvidesDailyCostRecords(%q) = %t, want %t", test.provider, got, test.want)
+			}
+		})
+	}
+}

@@ -143,6 +143,32 @@ func TestEvaluateStoredDailyCostAnomaliesReadsTargetAndSevenBaselineDays(t *test
 	}
 }
 
+func TestEvaluateStoredDailyCostAnomaliesIgnoresMonthlyOnlyAccountFreshness(t *testing.T) {
+	now := time.Date(2026, time.October, 2, 12, 0, 0, 0, time.UTC)
+	targetDay := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
+	collectionTime := metav1.NewTime(time.Date(2026, time.October, 2, 0, 5, 0, 0, time.UTC))
+	reader := &analyzerTestReader{records: anomalyRecords(targetDay, "25.00")}
+	policy := v1alpha1.BudgetPolicy{Spec: v1alpha1.BudgetPolicySpec{
+		Selector: map[string]string{"team": "sre"}, Amount: v1alpha1.BudgetAmount{Value: 1000, Currency: "USD"},
+		DailyAnomaly: &v1alpha1.DailyAnomalySpec{AbsoluteIncreaseThreshold: 5},
+	}}
+	aws := anomalyAccounts()[0]
+	aws.Spec.Collection.Enabled = true
+	aws.Status.LastSuccessfulCollectionTime = &collectionTime
+	ncp := v1alpha1.CloudAccount{Spec: v1alpha1.CloudAccountSpec{Provider: "ncp", AccountID: "ncp-1", Metadata: map[string]string{"team": "sre"}, Collection: v1alpha1.CollectionSpec{Enabled: true}}}
+
+	got, err := EvaluateStoredDailyCostAnomalies(context.Background(), reader, policy, []v1alpha1.CloudAccount{aws, ncp}, now)
+	if err != nil {
+		t.Fatalf("EvaluateStoredDailyCostAnomalies() error = %v, want AWS analysis despite stale NCP", err)
+	}
+	if len(got) != 1 || got[0].Provider != "aws" {
+		t.Fatalf("anomalies = %#v, want the AWS anomaly", got)
+	}
+	if len(reader.accounts) != 1 || reader.accounts[0] != (storage.AccountScope{Provider: "aws", BillingAccountID: "123"}) {
+		t.Fatalf("ReadCosts() scopes = %#v, want only the daily-cost AWS account", reader.accounts)
+	}
+}
+
 func TestEvaluateStoredDailyCostAnomaliesRejectsStaleCollection(t *testing.T) {
 	now := time.Date(2026, time.October, 2, 12, 0, 0, 0, time.UTC)
 	policy := v1alpha1.BudgetPolicy{Spec: v1alpha1.BudgetPolicySpec{

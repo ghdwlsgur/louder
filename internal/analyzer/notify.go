@@ -122,11 +122,16 @@ func NotifyBudgetForecastIntent(ctx context.Context, budget v1alpha1.BudgetPolic
 }
 
 func NotifyDailyAnomalyIntents(ctx context.Context, budget v1alpha1.BudgetPolicy, intents []DailyCostAnomalyIntent, accounts []v1alpha1.CloudAccount, policies []v1alpha1.NotificationPolicy, resolve NotificationResolver) error {
+	_, err := NotifyDailyAnomalyIntentsWithReceipts(ctx, budget, intents, accounts, policies, resolve, nil)
+	return err
+}
+
+func NotifyDailyAnomalyIntentsWithReceipts(ctx context.Context, budget v1alpha1.BudgetPolicy, intents []DailyCostAnomalyIntent, accounts []v1alpha1.CloudAccount, policies []v1alpha1.NotificationPolicy, resolve NotificationResolver, previous []v1alpha1.DailyAnomalyNotificationReceipt) ([]v1alpha1.DailyAnomalyNotificationReceipt, error) {
 	if len(intents) == 0 {
-		return nil
+		return nil, nil
 	}
 	if resolve == nil {
-		return ErrNotifierRequired
+		return nil, ErrNotifierRequired
 	}
 	accountsByScope := make(map[accountKey]v1alpha1.CloudAccount, len(accounts))
 	for _, account := range accounts {
@@ -135,15 +140,22 @@ func NotifyDailyAnomalyIntents(ctx context.Context, budget v1alpha1.BudgetPolicy
 		}
 	}
 	type destination struct {
+		policy   v1alpha1.NotificationPolicy
 		delivery notifier.Notifier
 		intents  []DailyCostAnomalyIntent
 	}
 	destinations := make([]destination, 0, len(policies))
+	eligibleDestination := false
 	for _, policy := range SelectNotificationPolicies("CostAnomaly", policies, accounts) {
 		matched := make([]DailyCostAnomalyIntent, 0)
 		for _, intent := range intents {
 			account, exists := accountsByScope[accountKey{provider: intent.Provider, accountID: intent.BillingAccountID}]
+			receipt := dailyAnomalyReceipt(intent, policy.Name)
 			if exists && matchesSelector(account.Spec.Metadata, policy.Spec.Selector) {
+				eligibleDestination = true
+				if hasDailyAnomalyReceipt(previous, receipt) {
+					continue
+				}
 				matched = append(matched, intent)
 			}
 		}
@@ -152,24 +164,45 @@ func NotifyDailyAnomalyIntents(ctx context.Context, budget v1alpha1.BudgetPolicy
 		}
 		delivery, err := resolve(ctx, policy)
 		if err != nil {
-			return fmt.Errorf("%w: %s", ErrNotificationPolicyResolution, policy.Name)
+			return nil, fmt.Errorf("%w: %s", ErrNotificationPolicyResolution, policy.Name)
 		}
 		if delivery == nil {
-			return ErrNotifierRequired
+			return nil, ErrNotifierRequired
 		}
-		destinations = append(destinations, destination{delivery: delivery, intents: matched})
+		destinations = append(destinations, destination{policy: policy, delivery: delivery, intents: matched})
 	}
 	if len(destinations) == 0 {
-		return ErrNotifierRequired
+		if eligibleDestination {
+			return nil, nil
+		}
+		return nil, ErrNotifierRequired
 	}
+	delivered := make([]v1alpha1.DailyAnomalyNotificationReceipt, 0)
 	for _, destination := range destinations {
 		for _, intent := range destination.intents {
 			if err := destination.delivery.Send(ctx, dailyAnomalyNotification(intent)); err != nil {
-				return err
+				return delivered, err
 			}
+			delivered = append(delivered, dailyAnomalyReceipt(intent, destination.policy.Name))
 		}
 	}
-	return nil
+	return delivered, nil
+}
+
+func dailyAnomalyReceipt(intent DailyCostAnomalyIntent, policyName string) v1alpha1.DailyAnomalyNotificationReceipt {
+	return v1alpha1.DailyAnomalyNotificationReceipt{
+		Date: intent.Date.UTC().Format("2006-01-02"), Provider: intent.Provider,
+		BillingAccountID: intent.BillingAccountID, NotificationPolicyName: policyName,
+	}
+}
+
+func hasDailyAnomalyReceipt(receipts []v1alpha1.DailyAnomalyNotificationReceipt, target v1alpha1.DailyAnomalyNotificationReceipt) bool {
+	for _, receipt := range receipts {
+		if receipt == target {
+			return true
+		}
+	}
+	return false
 }
 
 func budgetThresholdNotification(intent BudgetThresholdIntent) notifier.Notification {

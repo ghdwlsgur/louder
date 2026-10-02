@@ -158,15 +158,23 @@ func TestReconcileCreatesCollectorCronJob(t *testing.T) {
 	if len(container.Args) == 0 {
 		t.Fatal("Collector arguments are empty")
 	}
+	actual.Spec.Suspend = ptr.To(false)
+	actual.Spec.JobTemplate.Spec.Template.Spec.DNSPolicy = corev1.DNSClusterFirst
+	if err := c.Update(context.Background(), &actual); err != nil {
+		t.Fatal(err)
+	}
 	firstResourceVersion := actual.ResourceVersion
 	if _, err := r.Reconcile(context.Background(), request); err != nil {
-		t.Fatalf("second Reconcile() error = %v", err)
+		t.Fatalf("Reconcile() with API-defaulted fields error = %v", err)
 	}
 	if err := c.Get(context.Background(), types.NamespacedName{Namespace: "costs", Name: actual.Name}, &actual); err != nil {
 		t.Fatal(err)
 	}
 	if actual.ResourceVersion != firstResourceVersion {
-		t.Errorf("idempotent reconcile changed CronJob resourceVersion from %q to %q", firstResourceVersion, actual.ResourceVersion)
+		t.Errorf("reconcile changed CronJob resourceVersion from %q to %q for API-defaulted fields", firstResourceVersion, actual.ResourceVersion)
+	}
+	if actual.Spec.Suspend == nil || *actual.Spec.Suspend != false || actual.Spec.JobTemplate.Spec.Template.Spec.DNSPolicy != corev1.DNSClusterFirst {
+		t.Errorf("API defaults were not preserved: suspend=%v dnsPolicy=%q", actual.Spec.Suspend, actual.Spec.JobTemplate.Spec.Template.Spec.DNSPolicy)
 	}
 }
 

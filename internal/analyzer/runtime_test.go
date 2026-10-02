@@ -265,6 +265,111 @@ func TestRunBudgetPolicySendsAndDeduplicatesDailyAnomaly(t *testing.T) {
 	}
 }
 
+func TestRunBudgetPolicyContinuesDailyAnomalyWhenBudgetHasNoSubscriber(t *testing.T) {
+	now := time.Date(2026, time.October, 2, 12, 0, 0, 0, time.UTC)
+	targetDay := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
+	budget := &v1alpha1.BudgetPolicy{ObjectMeta: metav1.ObjectMeta{Name: "daily", Namespace: "costs"}, Spec: v1alpha1.BudgetPolicySpec{
+		Amount: v1alpha1.BudgetAmount{Value: 1, Currency: "USD"}, Thresholds: []int32{80},
+		DailyAnomaly: &v1alpha1.DailyAnomalySpec{AbsoluteIncreaseThreshold: 5},
+	}}
+	collected := metav1.NewTime(time.Date(2026, time.October, 2, 0, 5, 0, 0, time.UTC))
+	account := &v1alpha1.CloudAccount{ObjectMeta: metav1.ObjectMeta{Name: "aws", Namespace: "costs"}, Spec: v1alpha1.CloudAccountSpec{
+		Provider: "aws", AccountID: "123", Collection: v1alpha1.CollectionSpec{Enabled: true},
+	}, Status: v1alpha1.CloudAccountStatus{LastSuccessfulCollectionTime: &collected}}
+	policy := &v1alpha1.NotificationPolicy{ObjectMeta: metav1.ObjectMeta{Name: "anomalies", Namespace: "costs"}, Spec: v1alpha1.NotificationPolicySpec{
+		Type: "teams", Events: []string{"CostAnomaly"}, CredentialRef: corev1.LocalObjectReference{Name: "hook"},
+	}}
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "hook", Namespace: "costs"}, Data: map[string][]byte{"TEAMS_WEBHOOK_URL": []byte("https://teams.example.test/hook")}}
+	scheme := runtime.NewScheme()
+	if err := v1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	kube := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(budget).WithObjects(budget, account, policy, secret).Build()
+	delivery := &notifier.FakeNotifier{}
+	factory := func(string) (notifier.Notifier, error) { return delivery, nil }
+
+	_, err := RunBudgetPolicy(context.Background(), kube, &analyzerTestReader{records: anomalyRecords(targetDay, "25.00")}, "costs", "daily", factory, now)
+	if !errors.Is(err, ErrNotifierRequired) {
+		t.Fatalf("RunBudgetPolicy() error = %v, want ErrNotifierRequired for BudgetThreshold", err)
+	}
+	if len(delivery.Notifications) != 1 || delivery.Notifications[0].Type != "CostAnomaly" {
+		t.Fatalf("notifications = %#v, want one CostAnomaly despite missing BudgetThreshold subscriber", delivery.Notifications)
+	}
+}
+
+func TestRunBudgetPolicyDeduplicatesDailyAnomaliesPerAccountDateAndDestination(t *testing.T) {
+	now := time.Date(2026, time.October, 2, 12, 0, 0, 0, time.UTC)
+	targetDay := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
+	budget := &v1alpha1.BudgetPolicy{ObjectMeta: metav1.ObjectMeta{Name: "daily", Namespace: "costs"}, Spec: v1alpha1.BudgetPolicySpec{
+		Selector: map[string]string{"team": "sre"}, Amount: v1alpha1.BudgetAmount{Value: 1000, Currency: "USD"},
+		DailyAnomaly: &v1alpha1.DailyAnomalySpec{AbsoluteIncreaseThreshold: 5},
+	}}
+	collected := metav1.NewTime(time.Date(2026, time.October, 2, 0, 5, 0, 0, time.UTC))
+	aws := &v1alpha1.CloudAccount{ObjectMeta: metav1.ObjectMeta{Name: "aws-prod", Namespace: "costs"}, Spec: v1alpha1.CloudAccountSpec{
+		Provider: "aws", AccountID: "123", Metadata: map[string]string{"team": "sre"}, Collection: v1alpha1.CollectionSpec{Enabled: true},
+	}, Status: v1alpha1.CloudAccountStatus{LastSuccessfulCollectionTime: &collected}}
+	gcp := &v1alpha1.CloudAccount{ObjectMeta: metav1.ObjectMeta{Name: "gcp-prod", Namespace: "costs"}, Spec: v1alpha1.CloudAccountSpec{
+		Provider: "gcp", AccountID: "456", Metadata: map[string]string{"team": "sre"}, Collection: v1alpha1.CollectionSpec{Enabled: true},
+	}, Status: v1alpha1.CloudAccountStatus{LastSuccessfulCollectionTime: &collected}}
+	firstPolicy := &v1alpha1.NotificationPolicy{ObjectMeta: metav1.ObjectMeta{Name: "first-teams", Namespace: "costs"}, Spec: v1alpha1.NotificationPolicySpec{
+		Type: "teams", Events: []string{"CostAnomaly"}, Selector: map[string]string{"team": "sre"}, CredentialRef: corev1.LocalObjectReference{Name: "first-hook"},
+	}}
+	firstSecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "first-hook", Namespace: "costs"}, Data: map[string][]byte{"TEAMS_WEBHOOK_URL": []byte("https://first.example.test/hook")}}
+	scheme := runtime.NewScheme()
+	if err := v1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	kube := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(budget).WithObjects(budget, aws, gcp, firstPolicy, firstSecret).Build()
+	firstDelivery := &notifier.FakeNotifier{}
+	secondDelivery := &notifier.FakeNotifier{}
+	factory := func(endpoint string) (notifier.Notifier, error) {
+		if endpoint == "https://first.example.test/hook" {
+			return firstDelivery, nil
+		}
+		return secondDelivery, nil
+	}
+	reader := &analyzerTestReader{records: anomalyRecords(targetDay, "25.00")}
+
+	if _, err := RunBudgetPolicy(context.Background(), kube, reader, "costs", "daily", factory, now); err != nil {
+		t.Fatalf("first RunBudgetPolicy() error = %v", err)
+	}
+	if len(firstDelivery.Notifications) != 1 {
+		t.Fatalf("first destination notifications = %#v, want AWS anomaly", firstDelivery.Notifications)
+	}
+	secondPolicy := &v1alpha1.NotificationPolicy{ObjectMeta: metav1.ObjectMeta{Name: "second-teams", Namespace: "costs"}, Spec: v1alpha1.NotificationPolicySpec{
+		Type: "teams", Events: []string{"CostAnomaly"}, Selector: map[string]string{"team": "sre"}, CredentialRef: corev1.LocalObjectReference{Name: "second-hook"},
+	}}
+	secondSecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "second-hook", Namespace: "costs"}, Data: map[string][]byte{"TEAMS_WEBHOOK_URL": []byte("https://second.example.test/hook")}}
+	if err := kube.Create(context.Background(), secondPolicy); err != nil {
+		t.Fatal(err)
+	}
+	if err := kube.Create(context.Background(), secondSecret); err != nil {
+		t.Fatal(err)
+	}
+	gcpRecords := anomalyRecords(targetDay, "30.00")
+	for _, record := range gcpRecords {
+		record.Provider = "gcp"
+		record.BillingAccountID = "456"
+		record.SourceRecordID = "gcp-" + record.SourceRecordID
+		reader.records = append(reader.records, record)
+	}
+	if _, err := RunBudgetPolicy(context.Background(), kube, reader, "costs", "daily", factory, now); err != nil {
+		t.Fatalf("second RunBudgetPolicy() error = %v", err)
+	}
+	if len(firstDelivery.Notifications) != 2 || firstDelivery.Notifications[1].Details["BillingAccountID"] != "456" {
+		t.Errorf("first destination notifications = %#v, want AWS once and later GCP once", firstDelivery.Notifications)
+	}
+	if len(secondDelivery.Notifications) != 2 || secondDelivery.Notifications[0].Details["BillingAccountID"] != "123" || secondDelivery.Notifications[1].Details["BillingAccountID"] != "456" {
+		t.Errorf("new destination notifications = %#v, want both account anomalies for the same date", secondDelivery.Notifications)
+	}
+}
+
 func TestRunBudgetPolicySendsMonthlyBudgetForecast(t *testing.T) {
 	now := time.Date(2026, time.October, 16, 12, 0, 0, 0, time.UTC)
 	budget := &v1alpha1.BudgetPolicy{ObjectMeta: metav1.ObjectMeta{Name: "forecast", Namespace: "costs"}, Spec: v1alpha1.BudgetPolicySpec{

@@ -53,3 +53,12 @@ func IsUTCMidnight(value time.Time) bool {
 	value = value.UTC()
 	return value.Hour() == 0 && value.Minute() == 0 && value.Second() == 0 && value.Nanosecond() == 0
 }
+
+func ProvidesDailyCostRecords(name string) bool {
+	switch name {
+	case "aws", "azure", "gcp", "oci", "ibm", "alibaba":
+		return true
+	default:
+		return false
+	}
+}

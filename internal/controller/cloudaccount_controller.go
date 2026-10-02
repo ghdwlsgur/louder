@@ -12,6 +12,7 @@ import (
 	"github.com/ghdwlsgur/louder/api/v1alpha1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apiMeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -222,7 +223,6 @@ func jobTerminalTime(job *batchv1.Job) metav1.Time {
 
 func (r *CloudAccountReconciler) reconcileCollectorCronJob(ctx context.Context, account *v1alpha1.CloudAccount) error {
 	desired := collectorCronJob(account, r.CollectorImage, r.CollectorFixtureMode, r.CollectorStorageSecretName)
-	r.Scheme.Default(desired)
 	if err := controllerutil.SetControllerReference(account, desired, r.Scheme); err != nil {
 		return err
 	}
@@ -238,8 +238,11 @@ func (r *CloudAccountReconciler) reconcileCollectorCronJob(ctx context.Context, 
 	if owner == nil || owner.UID != account.UID {
 		return fmt.Errorf("CronJob %s/%s is not controlled by CloudAccount %s/%s", current.Namespace, current.Name, account.Namespace, account.Name)
 	}
-	if !reflect.DeepEqual(current.Spec, desired.Spec) || !reflect.DeepEqual(current.Labels, desired.Labels) || !reflect.DeepEqual(current.OwnerReferences, desired.OwnerReferences) {
-		current.Spec = desired.Spec
+	specChanged := !apiequality.Semantic.DeepDerivative(desired.Spec, current.Spec)
+	if specChanged || !reflect.DeepEqual(current.Labels, desired.Labels) || !reflect.DeepEqual(current.OwnerReferences, desired.OwnerReferences) {
+		if specChanged {
+			current.Spec = desired.Spec
+		}
 		current.Labels = desired.Labels
 		current.OwnerReferences = desired.OwnerReferences
 		return r.Update(ctx, &current)
