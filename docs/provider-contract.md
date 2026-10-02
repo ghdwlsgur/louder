@@ -13,7 +13,6 @@ GCP
 OCI
 IBM Cloud
 NCP
-NHN Cloud
 Alibaba Cloud
 ```
 
@@ -338,7 +337,6 @@ internal/provider/
 ├── oci/
 ├── ibm/
 ├── ncp/
-├── nhn/
 └── alibaba/
 ```
 
