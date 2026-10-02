@@ -12,17 +12,17 @@ import (
 	"github.com/ghdwlsgur/louder/internal/provider"
 )
 
-func TestPreviousSevenCompleteUTCDays(t *testing.T) {
+func TestPreviousEightCompleteUTCDays(t *testing.T) {
 	now := time.Date(2026, time.October, 1, 3, 15, 0, 0, time.FixedZone("UTC-7", -7*60*60))
-	start, end := PreviousSevenCompleteUTCDays(now)
-	wantStart := time.Date(2026, time.September, 24, 0, 0, 0, 0, time.UTC)
+	start, end := PreviousEightCompleteUTCDays(now)
+	wantStart := time.Date(2026, time.September, 23, 0, 0, 0, 0, time.UTC)
 	wantEnd := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
 	if !start.Equal(wantStart) || !end.Equal(wantEnd) {
-		t.Fatalf("PreviousSevenCompleteUTCDays() = (%s, %s), want (%s, %s)", start, end, wantStart, wantEnd)
+		t.Fatalf("PreviousEightCompleteUTCDays() = (%s, %s), want (%s, %s)", start, end, wantStart, wantEnd)
 	}
 }
 
-func TestRunWithRegistryCollectsPreviousSevenCompleteUTCDays(t *testing.T) {
+func TestRunWithRegistryCollectsPreviousEightCompleteUTCDays(t *testing.T) {
 	fake := &collectorTestProvider{records: []provider.RawCostRecord{{
 		Provider:       "aws",
 		SourceRecordID: "aws-cost-explorer-123456789012-2026-09-30",
@@ -43,10 +43,10 @@ func TestRunWithRegistryCollectsPreviousSevenCompleteUTCDays(t *testing.T) {
 	if err := RunWithRegistry(context.Background(), registry, "aws", "123456789012", now, &output, providerConfig); err != nil {
 		t.Fatalf("RunWithRegistry() error = %v", err)
 	}
-	wantStart := time.Date(2026, time.September, 24, 0, 0, 0, 0, time.UTC)
+	wantStart := time.Date(2026, time.September, 23, 0, 0, 0, 0, time.UTC)
 	wantEnd := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
 	if fake.request.AccountID != "123456789012" || !fake.request.StartTime.Equal(wantStart) || !fake.request.EndTime.Equal(wantEnd) {
-		t.Errorf("CollectRequest = %#v, want account and previous seven complete UTC days", fake.request)
+		t.Errorf("CollectRequest = %#v, want account and an eight-day UTC window for anomaly baseline", fake.request)
 	}
 	if fake.request.ProviderConfig["projectId"] != "billing-query" || fake.request.ProviderConfig["datasetId"] != "billing" || fake.request.ProviderConfig["tableId"] != "export" {
 		t.Errorf("CollectRequest provider config = %#v", fake.request.ProviderConfig)
@@ -105,7 +105,7 @@ func TestRunEmitsAzureCostQueryFixtureAsJSONLines(t *testing.T) {
 	}
 }
 
-func TestRunWithRegistryAndStorageCollectsPreviousSevenCompleteUTCDays(t *testing.T) {
+func TestRunWithRegistryAndStorageCollectsPreviousEightCompleteUTCDays(t *testing.T) {
 	fake := &collectorTestProvider{records: []provider.RawCostRecord{{
 		Provider:       "aws",
 		SourceRecordID: "aws-cost-explorer-123456789012-2026-09-30",
@@ -124,10 +124,10 @@ func TestRunWithRegistryAndStorageCollectsPreviousSevenCompleteUTCDays(t *testin
 	if err := RunWithRegistryAndStorage(context.Background(), registry, "aws", "123456789012", now, &bytes.Buffer{}, &collectorTestWriter{}); err != nil {
 		t.Fatalf("RunWithRegistryAndStorage() error = %v", err)
 	}
-	wantStart := time.Date(2026, time.September, 24, 0, 0, 0, 0, time.UTC)
+	wantStart := time.Date(2026, time.September, 23, 0, 0, 0, 0, time.UTC)
 	wantEnd := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
 	if !fake.request.StartTime.Equal(wantStart) || !fake.request.EndTime.Equal(wantEnd) {
-		t.Errorf("CollectRequest window = (%s, %s), want seven complete UTC days (%s, %s)", fake.request.StartTime, fake.request.EndTime, wantStart, wantEnd)
+		t.Errorf("CollectRequest window = (%s, %s), want eight complete UTC days (%s, %s)", fake.request.StartTime, fake.request.EndTime, wantStart, wantEnd)
 	}
 }
 

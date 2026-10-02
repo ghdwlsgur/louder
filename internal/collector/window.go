@@ -2,9 +2,9 @@ package collector
 
 import "time"
 
-// PreviousSevenCompleteUTCDays returns the UTC start and exclusive end of the previous seven calendar days.
-func PreviousSevenCompleteUTCDays(now time.Time) (time.Time, time.Time) {
+// PreviousEightCompleteUTCDays returns the UTC start and exclusive end of the previous eight calendar days.
+func PreviousEightCompleteUTCDays(now time.Time) (time.Time, time.Time) {
 	utcNow := now.UTC()
 	end := time.Date(utcNow.Year(), utcNow.Month(), utcNow.Day(), 0, 0, 0, 0, time.UTC)
-	return end.AddDate(0, 0, -7), end
+	return end.AddDate(0, 0, -8), end
 }

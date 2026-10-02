@@ -14,10 +14,17 @@ type BudgetForecastSpec struct {
 	Enabled bool `json:"enabled"`
 }
 
+type DailyAnomalySpec struct {
+	// AbsoluteIncreaseThreshold is expressed in BudgetPolicy.spec.amount.currency.
+	// +kubebuilder:validation:Minimum=1
+	AbsoluteIncreaseThreshold int64 `json:"absoluteIncreaseThreshold"`
+}
+
 type BudgetPolicySpec struct {
-	Selector   map[string]string `json:"selector"`
-	Amount     BudgetAmount      `json:"amount"`
-	Thresholds []int32           `json:"thresholds,omitempty"`
+	Selector     map[string]string `json:"selector"`
+	Amount       BudgetAmount      `json:"amount"`
+	Thresholds   []int32           `json:"thresholds,omitempty"`
+	DailyAnomaly *DailyAnomalySpec `json:"dailyAnomaly,omitempty"`
 	// Schedule opts this policy into recurring Analyzer evaluation.
 	// +optional
 	// +kubebuilder:validation:MinLength=1
@@ -32,6 +39,9 @@ type BudgetPolicyStatus struct {
 	// NotifiedThresholds contains thresholds delivered during LastNotifiedMonth.
 	// +optional
 	NotifiedThresholds []int32 `json:"notifiedThresholds,omitempty"`
+	// LastNotifiedAnomalyDate is the latest completed UTC date delivered for daily cost anomalies.
+	// +optional
+	LastNotifiedAnomalyDate string `json:"lastNotifiedAnomalyDate,omitempty"`
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
@@ -69,6 +79,10 @@ func (in *BudgetPolicy) DeepCopyInto(out *BudgetPolicy) {
 	if in.Spec.Forecast != nil {
 		out.Spec.Forecast = new(BudgetForecastSpec)
 		*out.Spec.Forecast = *in.Spec.Forecast
+	}
+	if in.Spec.DailyAnomaly != nil {
+		out.Spec.DailyAnomaly = new(DailyAnomalySpec)
+		*out.Spec.DailyAnomaly = *in.Spec.DailyAnomaly
 	}
 	if in.Status.NotifiedThresholds != nil {
 		out.Status.NotifiedThresholds = append([]int32(nil), in.Status.NotifiedThresholds...)

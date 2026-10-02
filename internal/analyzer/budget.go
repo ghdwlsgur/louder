@@ -82,6 +82,9 @@ func validateBudgetPolicy(policy v1alpha1.BudgetPolicy) error {
 	if policy.Spec.Amount.Value <= 0 || !validCurrency(policy.Spec.Amount.Currency) {
 		return ErrInvalidBudgetPolicy
 	}
+	if policy.Spec.DailyAnomaly != nil && policy.Spec.DailyAnomaly.AbsoluteIncreaseThreshold <= 0 {
+		return ErrInvalidBudgetPolicy
+	}
 	seenThresholds := make(map[int32]struct{}, len(policy.Spec.Thresholds))
 	for _, threshold := range policy.Spec.Thresholds {
 		if threshold <= 0 || threshold > 100 {
