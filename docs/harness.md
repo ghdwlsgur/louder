@@ -76,14 +76,15 @@ Never store:
 
 The fixture transport should emulate provider behavior where practical.
 
-The AWS live adapter queries Cost Explorer `GetCostAndUsage` for daily account totals using `NetUnblendedCost`. The GCP live adapter queries the Standard BigQuery Billing Export and aggregates `cost + credits` by UTC day and currency. The Azure live adapter queries subscription-scope ActualCost daily totals using `PreTaxCost`, recorded as `actual_pre_tax_cost`; its source IDs include currency to preserve distinct same-day currency rows. The OCI live adapter queries tenancy-level `COST` at daily granularity, preserves JSON decimal precision, and follows `opc-next-page`; it uses the isolated `oci_cost` basis because equivalence with other providers and credit/tax treatment have not been established. The IBM Cloud live adapter streams the account FOCUS 1.2 CSV export for each overlapping billing month; IBM documents CSV mode as returning the full report, so there is no provider cursor to follow. It sums daily `BilledCost` by currency and uses an isolated `ibm_billed_cost` basis. Alibaba Cloud queries BSS `DescribeInstanceBill` daily with `PretaxAmount`, follows `NextToken`, and uses the isolated `alibaba_pretax_cost` basis. Alibaba documents a 24-hour billing-data delay, unsettled current-month PAYG exclusions, and attached-resource detail gaps in this API; Split Bill is not currently collected. The IBM adapter rejects non-daily charge periods because public docs do not define how to allocate them. Budget evaluation rejects account selections whose collected records contain mixed cost bases. NCP daily usage APIs expose quantities without daily actual cost values, and NHN daily actual-cost coverage is not implemented; neither provider is included in daily anomaly detection. Unit tests use synthetic API results; kind E2E stays offline and does not require CSP credentials. Each live run requests the previous eight complete UTC days so the Analyzer can compare the target day with seven baseline days, and writes stable scope/day/currency IDs so ClickHouse can replace revised totals. CloudAccount schedules remain user-controlled; examples recommend one run per day. AWS refreshes data at least every 24 hours, but some upstream data can arrive later, so the lookback is bounded and does not guarantee final values. BigQuery export is asynchronous and queries can incur BigQuery charges. Azure Cost Management data may be delayed; Azure Cost Management doesn't include credits before invoice finalization. See [AWS refresh behavior](https://docs.aws.amazon.com/cost-management/latest/userguide/ce-what-is.html), [AWS API pricing](https://aws.amazon.com/aws-cost-management/aws-cost-explorer/pricing/), [Google export setup and cost](https://cloud.google.com/billing/docs/how-to/export-data-bigquery-setup), [Azure Cost Management Query API](https://learn.microsoft.com/en-us/rest/api/cost-management/query/usage?view=rest-cost-management-2023-03-01), and [Alibaba `DescribeInstanceBill`](https://www.alibabacloud.com/help/en/user-center/developer-reference/api-bssopenapi-2017-12-14-describeinstancebill).
+The AWS live adapter queries Cost Explorer `GetCostAndUsage` for daily account totals using `NetUnblendedCost`. The GCP live adapter queries the Standard BigQuery Billing Export and aggregates `cost + credits` by UTC day and currency. The Azure live adapter queries subscription-scope ActualCost daily totals using `PreTaxCost`, recorded as `actual_pre_tax_cost`; its source IDs include currency to preserve distinct same-day currency rows. The OCI live adapter queries tenancy-level `COST` at daily granularity, preserves JSON decimal precision, and follows `opc-next-page`; it uses the isolated `oci_cost` basis because equivalence with other providers and credit/tax treatment have not been established. The IBM Cloud live adapter streams the account FOCUS 1.2 CSV export for each overlapping billing month; IBM documents CSV mode as returning the full report, so there is no provider cursor to follow. It sums daily `BilledCost` by currency and uses an isolated `ibm_billed_cost` basis. Alibaba Cloud queries BSS `DescribeInstanceBill` daily with `PretaxAmount`, follows `NextToken`, and uses the isolated `alibaba_pretax_cost` basis. Alibaba documents a 24-hour billing-data delay, unsettled current-month PAYG exclusions, and attached-resource detail gaps in this API; Split Bill is not currently collected. NCP queries monthly `getDemandCostList`, groups `thisMonthAmountIncludingVat` by month and currency, and stores the billed amount including VAT under `ncp_monthly_invoice_cost`; the API does not promise when a current-month amount is available. NCP records are included in monthly budgets but not daily anomaly detection. NCP daily usage APIs expose quantities without daily actual cost values, and NHN daily actual-cost coverage is not implemented; both providers remain outside daily anomaly detection. The IBM adapter rejects non-daily charge periods because public docs do not define how to allocate them. Budget evaluation rejects account selections whose collected records contain mixed cost bases. Unit tests use synthetic API results; kind E2E stays offline and does not require CSP credentials. Daily live runs request the previous eight complete UTC days so the Analyzer can compare the target day with seven baseline days. NCP's month-period source IDs remain stable so ClickHouse can replace revised monthly values. CloudAccount schedules remain user-controlled; examples recommend one run per day. AWS refreshes data at least every 24 hours, but some upstream data can arrive later, so the lookback is bounded and does not guarantee final values. BigQuery export is asynchronous and queries can incur BigQuery charges. Azure Cost Management data may be delayed; Azure Cost Management doesn't include credits before invoice finalization. See [AWS refresh behavior](https://docs.aws.amazon.com/cost-management/latest/userguide/ce-what-is.html), [AWS API pricing](https://aws.amazon.com/aws-cost-management/aws-cost-explorer/pricing/), [Google export setup and cost](https://cloud.google.com/billing/docs/how-to/export-data-bigquery-setup), [Azure Cost Management Query API](https://learn.microsoft.com/en-us/rest/api/cost-management/query/usage?view=rest-cost-management-2023-03-01), [NCP monthly billing API](https://api.ncloud-docs.com/docs/platform-costandusage-getdemandcostlist), and [Alibaba `DescribeInstanceBill`](https://www.alibabacloud.com/help/en/user-center/developer-reference/api-bssopenapi-2017-12-14-describeinstancebill).
 
 A developer should be able to run something conceptually like:
 
 ```bash
 cost-collector \
   --provider=ncp \
-  --fixture=testdata/ncp/normal.json
+  --account-id=2760000 \
+  --fixture=embedded:ncp
 ```
 
 or equivalent test-only wiring.
@@ -92,7 +93,7 @@ or equivalent test-only wiring.
 
 ## 4. Provider contract tests
 
-Every implemented provider must pass the same behavioral contract. AWS, GCP, and Azure are the initial providers; subsequent CSPs must pass the same contract before they are considered complete.
+Every implemented provider must pass the same behavioral contract. Each provider's suite may add granularity-specific cases; NCP verifies monthly aggregation while the daily providers verify day-level aggregation.
 
 Required cases:
 
@@ -162,7 +163,7 @@ testdata/ncp/
 
 Tests compare normalized output against the expected golden file.
 
-The initial golden case normalizes an AWS account-day `NetUnblendedCost` record and verifies exact amount-string, currency, source ID, and UTC interval preservation. It does not imply that service/resource mapping or currency conversion exists.
+The golden cases normalize an AWS account-day `NetUnblendedCost` record and an NCP account-month invoice record. They verify exact amount-string, currency, source ID, and UTC interval preservation. They do not imply that service/resource mapping or currency conversion exists.
 
 Golden tests are especially useful for:
 
@@ -322,7 +323,7 @@ embedded fixture Collector
 assert JSON Lines output
 ```
 
-The Collector has AWS Cost Explorer, GCP BigQuery Billing Export, and Azure Cost Management Query adapters for daily account-level cost totals. Their unit and provider contract tests use synthetic API responses; the local kind flow stays offline and runs embedded fixtures for AWS, GCP, and Azure. `make kind-e2e-storage` additionally starts an ephemeral ClickHouse instance, applies the checked-in schema, runs the AWS fixture twice, checks that `FINAL` returns one logical row, and uses the native Go reader to decode the normalized row. It then evaluates the stored row against a synthetic budget and verifies the notification payload through `FakeNotifier`. This verifies the cost-to-notification path without CSP access or a real Teams tenant.
+The Collector has daily adapters for AWS, GCP, Azure, OCI, IBM Cloud, and Alibaba Cloud, plus a monthly invoice adapter for NCP. Unit and provider contract tests use synthetic API responses; the local kind flow stays offline and exercises embedded fixtures without CSP credentials. `make kind-e2e-storage` additionally starts an ephemeral ClickHouse instance, applies the checked-in schema, runs the AWS fixture twice, checks that `FINAL` returns one logical row, and uses the native Go reader to decode the normalized row. It then evaluates the stored row against a synthetic budget and verifies the notification payload through `FakeNotifier`. This verifies the cost-to-notification path without CSP access or a real Teams tenant.
 
 The kind E2E scripts default to cluster name `louder-e2e`. Set `KIND_CLUSTER_NAME` to run against a separate disposable cluster, for example `KIND_CLUSTER_NAME=louder-e2e-local make kind-e2e`. A cluster that already has the selected name is never replaced.
 
@@ -567,7 +568,7 @@ Avoid requiring developers to remember long command sequences.
 [ ] stale-data condition is tested
 ```
 
-The initial provider completion criteria cover AWS, GCP, and Azure. As additional CSPs are implemented, each must pass the same provider contract before it is considered complete.
+Daily provider criteria include AWS, GCP, Azure, OCI, IBM Cloud, and Alibaba Cloud; NCP has a monthly invoice contract and remains excluded from daily anomaly detection. Every implemented provider must pass its contract tests before it is considered complete.
 
 ---
 

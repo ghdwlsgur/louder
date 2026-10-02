@@ -1,0 +1,13 @@
+apiVersion: finops.sre.local/v1alpha1
+kind: CloudAccount
+metadata:
+  name: ncp-prod
+  namespace: cloud-cost
+spec:
+  provider: ncp
+  accountId: replace-with-ncp-member-number
+  credentialRef:
+    name: ncp-cost-reader
+  collection:
+    enabled: true
+    schedule: "0 0 * * *"

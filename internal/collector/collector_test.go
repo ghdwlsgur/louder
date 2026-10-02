@@ -285,3 +285,17 @@ func TestRunEmitsAlibabaCostFixtureAsJSONLines(t *testing.T) {
 		t.Errorf("record = %#v, want Alibaba pretax-cost fixture record", record)
 	}
 }
+
+func TestRunEmitsNCPMonthlyCostFixtureAsJSONLines(t *testing.T) {
+	var output bytes.Buffer
+	if err := Run(context.Background(), "ncp", "synthetic-ncp-account", "embedded:ncp", &output); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	var record provider.RawCostRecord
+	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &record); err != nil {
+		t.Fatalf("output is not a JSON record: %v", err)
+	}
+	if record.Provider != "ncp" || record.BillingScope != "synthetic-ncp-account" || record.CostBasis != provider.CostBasisNCPMonthly || record.Amount != "12345.67" || record.Currency != "KRW" || !record.UsageStart.Equal(time.Date(2026, time.September, 1, 0, 0, 0, 0, time.UTC)) || !record.UsageEnd.Equal(time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Errorf("record = %#v, want normalized NCP monthly cost record", record)
+	}
+}

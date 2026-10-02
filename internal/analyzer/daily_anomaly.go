@@ -65,6 +65,9 @@ func EvaluateDailyCostAnomalies(policyName string, selector map[string]string, a
 			continue
 		}
 		end := record.UsageEnd.UTC()
+		if isMonthlyInterval(start, end) {
+			continue
+		}
 		if start.Hour() != 0 || start.Minute() != 0 || start.Second() != 0 || start.Nanosecond() != 0 || !end.Equal(start.AddDate(0, 0, 1)) {
 			return nil, normalize.ErrInvalidCostRecord
 		}
@@ -166,6 +169,10 @@ func EvaluateStoredDailyCostAnomalies(ctx context.Context, reader storage.CostRe
 	return EvaluateDailyCostAnomalies(policy.Name, policy.Spec.Selector, selectedAccounts, records, targetDay, v1alpha1.BudgetAmount{
 		Value: policy.Spec.DailyAnomaly.AbsoluteIncreaseThreshold, Currency: policy.Spec.Amount.Currency,
 	})
+}
+
+func isMonthlyInterval(start, end time.Time) bool {
+	return start.Day() == 1 && provider.IsUTCMidnight(start) && end.Equal(start.AddDate(0, 1, 0))
 }
 
 func exceedsAnomalyThreshold(today, baseline, increase *big.Rat, absoluteThreshold int64) bool {
