@@ -42,6 +42,9 @@ type BudgetPolicyStatus struct {
 	// LastNotifiedAnomalyDate is the latest completed UTC date delivered for daily cost anomalies.
 	// +optional
 	LastNotifiedAnomalyDate string `json:"lastNotifiedAnomalyDate,omitempty"`
+	// LastNotifiedForecastMonth is the UTC month for the last successfully delivered budget forecast.
+	// +optional
+	LastNotifiedForecastMonth string `json:"lastNotifiedForecastMonth,omitempty"`
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }

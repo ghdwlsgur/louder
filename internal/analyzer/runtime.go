@@ -75,6 +75,19 @@ func RunBudgetPolicy(ctx context.Context, kube client.Client, reader storage.Cos
 			return intents, fmt.Errorf("%w", ErrBudgetNotificationStatusUpdate)
 		}
 	}
+	forecastIntent, err := EvaluateStoredBudgetForecast(ctx, reader, budget, accounts.Items, now)
+	if err != nil {
+		return intents, err
+	}
+	if forecastIntent != nil && budget.Status.LastNotifiedForecastMonth != month {
+		if err := NotifyBudgetForecastIntent(ctx, budget, *forecastIntent, accounts.Items, policies.Items, resolve); err != nil {
+			return intents, err
+		}
+		budget.Status.LastNotifiedForecastMonth = month
+		if err := kube.Status().Update(ctx, &budget); err != nil {
+			return intents, fmt.Errorf("%w", ErrBudgetNotificationStatusUpdate)
+		}
+	}
 	anomalyIntents, err := EvaluateStoredDailyCostAnomalies(ctx, reader, budget, accounts.Items, now)
 	if err != nil {
 		return intents, err

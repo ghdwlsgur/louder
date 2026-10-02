@@ -63,6 +63,7 @@ spec:
                   - BudgetWarning
                   - BudgetExceeded
                   - BudgetThreshold
+                  - BudgetForecast
                   - CostAnomaly
                   - CollectionFailed
                   type: string

@@ -10,6 +10,7 @@ import (
 	"github.com/ghdwlsgur/louder/api/v1alpha1"
 	"github.com/ghdwlsgur/louder/internal/normalize"
 	"github.com/ghdwlsgur/louder/internal/notifier"
+	"github.com/ghdwlsgur/louder/internal/provider"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -261,5 +262,115 @@ func TestRunBudgetPolicySendsAndDeduplicatesDailyAnomaly(t *testing.T) {
 	}
 	if stored.Status.LastNotifiedAnomalyDate != "2026-10-01" {
 		t.Errorf("LastNotifiedAnomalyDate = %q, want 2026-10-01", stored.Status.LastNotifiedAnomalyDate)
+	}
+}
+
+func TestRunBudgetPolicySendsMonthlyBudgetForecast(t *testing.T) {
+	now := time.Date(2026, time.October, 16, 12, 0, 0, 0, time.UTC)
+	budget := &v1alpha1.BudgetPolicy{ObjectMeta: metav1.ObjectMeta{Name: "forecast", Namespace: "costs"}, Spec: v1alpha1.BudgetPolicySpec{
+		Selector: map[string]string{"team": "sre"}, Amount: v1alpha1.BudgetAmount{Value: 250, Currency: "USD"},
+		Forecast: &v1alpha1.BudgetForecastSpec{Enabled: true},
+	}}
+	account := &v1alpha1.CloudAccount{ObjectMeta: metav1.ObjectMeta{Name: "aws-prod", Namespace: "costs"}, Spec: v1alpha1.CloudAccountSpec{
+		Provider: "aws", AccountID: "123", Metadata: map[string]string{"team": "sre"},
+	}}
+	policy := &v1alpha1.NotificationPolicy{ObjectMeta: metav1.ObjectMeta{Name: "forecast-teams", Namespace: "costs"}, Spec: v1alpha1.NotificationPolicySpec{
+		Type: "teams", Events: []string{"BudgetForecast"}, Selector: map[string]string{"team": "sre"}, CredentialRef: corev1.LocalObjectReference{Name: "teams-hook"},
+	}}
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "teams-hook", Namespace: "costs"}, Data: map[string][]byte{"TEAMS_WEBHOOK_URL": []byte("https://teams.example.test/hook")}}
+	scheme := runtime.NewScheme()
+	if err := v1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	kube := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(budget).WithObjects(budget, account, policy, secret).Build()
+	var records []normalize.CostRecord
+	for day := 1; day <= 16; day++ {
+		start := time.Date(2026, time.October, day, 0, 0, 0, 0, time.UTC)
+		records = append(records, normalize.CostRecord{
+			Provider: "aws", BillingAccountID: "123", CostBasis: provider.CostBasisNet,
+			Amount: "10", Currency: "USD", UsageStart: start, UsageEnd: start.AddDate(0, 0, 1),
+		})
+	}
+	reader := &analyzerTestReader{records: records}
+	delivery := &notifier.FakeNotifier{}
+	factory := func(string) (notifier.Notifier, error) { return delivery, nil }
+
+	for range 2 {
+		if _, err := RunBudgetPolicy(context.Background(), kube, reader, "costs", "forecast", factory, now); err != nil {
+			t.Fatalf("RunBudgetPolicy() error = %v", err)
+		}
+	}
+	if len(delivery.Notifications) != 1 {
+		t.Fatalf("notifications = %#v, want one forecast alert for a projected $310 month-end spend", delivery.Notifications)
+	}
+	notification := delivery.Notifications[0]
+	if notification.Type != "BudgetForecast" || notification.Details["Month"] != "2026-10" || notification.Details["Spent"] != "160.00" || notification.Details["ProjectedSpend"] != "310.00" {
+		t.Errorf("notification = %#v, want October forecast with spend 160.00 and projection 310.00", notification)
+	}
+	var stored v1alpha1.BudgetPolicy
+	if err := kube.Get(context.Background(), types.NamespacedName{Namespace: "costs", Name: "forecast"}, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status.LastNotifiedForecastMonth != "2026-10" {
+		t.Errorf("LastNotifiedForecastMonth = %q, want 2026-10", stored.Status.LastNotifiedForecastMonth)
+	}
+}
+
+func TestRunBudgetPolicyDoesNotRecordForecastAfterDeliveryFailure(t *testing.T) {
+	now := time.Date(2026, time.October, 16, 12, 0, 0, 0, time.UTC)
+	budget := &v1alpha1.BudgetPolicy{ObjectMeta: metav1.ObjectMeta{Name: "forecast", Namespace: "costs"}, Spec: v1alpha1.BudgetPolicySpec{
+		Selector: map[string]string{"team": "sre"}, Amount: v1alpha1.BudgetAmount{Value: 250, Currency: "USD"},
+		Forecast: &v1alpha1.BudgetForecastSpec{Enabled: true},
+	}}
+	account := &v1alpha1.CloudAccount{ObjectMeta: metav1.ObjectMeta{Name: "aws-prod", Namespace: "costs"}, Spec: v1alpha1.CloudAccountSpec{
+		Provider: "aws", AccountID: "123", Metadata: map[string]string{"team": "sre"},
+	}}
+	policy := &v1alpha1.NotificationPolicy{ObjectMeta: metav1.ObjectMeta{Name: "forecast-teams", Namespace: "costs"}, Spec: v1alpha1.NotificationPolicySpec{
+		Type: "teams", Events: []string{"BudgetForecast"}, Selector: map[string]string{"team": "sre"}, CredentialRef: corev1.LocalObjectReference{Name: "teams-hook"},
+	}}
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "teams-hook", Namespace: "costs"}, Data: map[string][]byte{"TEAMS_WEBHOOK_URL": []byte("https://teams.example.test/hook")}}
+	scheme := runtime.NewScheme()
+	if err := v1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	kube := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(budget).WithObjects(budget, account, policy, secret).Build()
+	var records []normalize.CostRecord
+	for day := 1; day <= 16; day++ {
+		start := time.Date(2026, time.October, day, 0, 0, 0, 0, time.UTC)
+		records = append(records, normalize.CostRecord{Provider: "aws", BillingAccountID: "123", Amount: "10", Currency: "USD", UsageStart: start, UsageEnd: start.AddDate(0, 0, 1)})
+	}
+	reader := &analyzerTestReader{records: records}
+	deliveryErr := errors.New("forecast delivery failed")
+	delivery := &failingAnalyzerNotifier{failAt: 1, err: deliveryErr}
+	factory := func(string) (notifier.Notifier, error) { return delivery, nil }
+
+	if _, err := RunBudgetPolicy(context.Background(), kube, reader, "costs", "forecast", factory, now); !errors.Is(err, deliveryErr) {
+		t.Fatalf("RunBudgetPolicy() error = %v, want forecast delivery error", err)
+	}
+	var stored v1alpha1.BudgetPolicy
+	key := types.NamespacedName{Namespace: "costs", Name: "forecast"}
+	if err := kube.Get(context.Background(), key, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status.LastNotifiedForecastMonth != "" {
+		t.Fatalf("LastNotifiedForecastMonth = %q, want no receipt after failed delivery", stored.Status.LastNotifiedForecastMonth)
+	}
+	if _, err := RunBudgetPolicy(context.Background(), kube, reader, "costs", "forecast", factory, now); err != nil {
+		t.Fatalf("RunBudgetPolicy() retry error = %v", err)
+	}
+	if len(delivery.attempts) != 2 {
+		t.Fatalf("delivery attempts = %d, want failure followed by successful retry", len(delivery.attempts))
+	}
+	if err := kube.Get(context.Background(), key, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status.LastNotifiedForecastMonth != "2026-10" {
+		t.Errorf("LastNotifiedForecastMonth = %q after retry, want 2026-10", stored.Status.LastNotifiedForecastMonth)
 	}
 }

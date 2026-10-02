@@ -229,7 +229,7 @@ spec:
     - BudgetThreshold
 ```
 
-The one-shot Analyzer resolves the referenced Kubernetes Secret only after the event and account selectors match. `events` is required and explicitly subscribes this destination to notifications; the current budget Analyzer event is `BudgetThreshold`. An optional selector matches the policy when at least one relevant CloudAccount has all configured metadata values. The runtime reads `TEAMS_WEBHOOK_URL` from the Secret in the same namespace and does not include its value in errors or logs.
+The one-shot Analyzer resolves the referenced Kubernetes Secret only after the event and account selectors match. `events` is required and explicitly subscribes this destination to notifications; the Analyzer currently emits `BudgetThreshold`, `BudgetForecast`, and `CostAnomaly`. An optional selector matches the policy when at least one relevant CloudAccount has all configured metadata values. The runtime reads `TEAMS_WEBHOOK_URL` from the Secret in the same namespace and does not include its value in errors or logs.
 
 Run the Analyzer once for a BudgetPolicy with:
 

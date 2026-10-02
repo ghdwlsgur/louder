@@ -142,7 +142,7 @@ func TestGeneratedNotificationPolicySchemaRequiresSupportedEvents(t *testing.T) 
 	if events.Type != "array" || events.Items == nil || events.Items.Type != "string" {
 		t.Fatalf("spec.events schema = %#v, want array of strings", events)
 	}
-	want := []string{"DailySummary", "BudgetWarning", "BudgetExceeded", "BudgetThreshold", "CostAnomaly", "CollectionFailed"}
+	want := []string{"DailySummary", "BudgetWarning", "BudgetExceeded", "BudgetThreshold", "BudgetForecast", "CostAnomaly", "CollectionFailed"}
 	if !reflect.DeepEqual(events.Items.Enum, want) {
 		t.Errorf("spec.events enum = %#v, want %#v", events.Items.Enum, want)
 	}

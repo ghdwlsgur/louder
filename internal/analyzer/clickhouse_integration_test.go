@@ -239,3 +239,70 @@ func TestStoredDailyAnomalyRuntimeDeduplicates(t *testing.T) {
 		t.Errorf("LastNotifiedAnomalyDate = %q, want 2026-10-08", stored.Status.LastNotifiedAnomalyDate)
 	}
 }
+
+func TestStoredBudgetForecastRuntimeDeduplicates(t *testing.T) {
+	if os.Getenv("CLICKHOUSE_INTEGRATION") != "1" {
+		t.Skip("ClickHouse integration environment is not enabled")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	store, err := clickhouse.OpenFromEnv(ctx)
+	if err != nil {
+		t.Fatalf("OpenFromEnv() error = %v", err)
+	}
+	defer store.Close()
+
+	now := time.Date(2026, time.October, 16, 12, 0, 0, 0, time.UTC)
+	budget := &v1alpha1.BudgetPolicy{ObjectMeta: metav1.ObjectMeta{Name: "forecast-runtime", Namespace: "cloud-cost"}, Spec: v1alpha1.BudgetPolicySpec{
+		Selector: map[string]string{"team": "sre"}, Amount: v1alpha1.BudgetAmount{Value: 250, Currency: "USD"},
+		Forecast: &v1alpha1.BudgetForecastSpec{Enabled: true},
+	}}
+	account := &v1alpha1.CloudAccount{ObjectMeta: metav1.ObjectMeta{Name: "aws-forecast-runtime", Namespace: "cloud-cost"}, Spec: v1alpha1.CloudAccountSpec{
+		Provider: "aws", AccountID: "forecast-runtime-kind-account", Metadata: map[string]string{"team": "sre"},
+	}}
+	policy := &v1alpha1.NotificationPolicy{ObjectMeta: metav1.ObjectMeta{Name: "forecast-runtime-teams", Namespace: "cloud-cost"}, Spec: v1alpha1.NotificationPolicySpec{
+		Type: "teams", Events: []string{"BudgetForecast"}, Selector: map[string]string{"team": "sre"}, CredentialRef: corev1.LocalObjectReference{Name: "forecast-runtime-hook"},
+	}}
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "forecast-runtime-hook", Namespace: "cloud-cost"}, Data: map[string][]byte{"TEAMS_WEBHOOK_URL": []byte("https://teams.example.test/hook")}}
+	scheme := runtime.NewScheme()
+	if err := v1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	kube := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(budget).WithObjects(budget, account, policy, secret).Build()
+	records := make([]normalize.CostRecord, 0, 16)
+	for day := 1; day <= 16; day++ {
+		start := time.Date(2026, time.October, day, 0, 0, 0, 0, time.UTC)
+		records = append(records, normalize.CostRecord{
+			Provider: "aws", BillingAccountID: "forecast-runtime-kind-account",
+			SourceRecordID: fmt.Sprintf("kind-budget-forecast-aws-%s", start.Format("2006-01-02")),
+			CostBasis:      provider.CostBasisNet, Amount: "10", Currency: "USD",
+			UsageStart: start, UsageEnd: start.AddDate(0, 0, 1),
+		})
+	}
+	if err := store.WriteCosts(ctx, records); err != nil {
+		t.Fatalf("WriteCosts() error = %v", err)
+	}
+	delivery := &notifier.FakeNotifier{}
+	factory := func(string) (notifier.Notifier, error) { return delivery, nil }
+	for range 2 {
+		if _, err := RunBudgetPolicy(ctx, kube, store, "cloud-cost", "forecast-runtime", factory, now); err != nil {
+			t.Fatalf("RunBudgetPolicy() error = %v", err)
+		}
+	}
+	if len(delivery.Notifications) != 1 {
+		t.Fatalf("notifications = %#v, want one BudgetForecast after two runtime passes", delivery.Notifications)
+	}
+	if notification := delivery.Notifications[0]; notification.Type != "BudgetForecast" || notification.Details["ProjectedSpend"] != "310.00" {
+		t.Errorf("notification = %#v, want BudgetForecast projected spend 310.00", notification)
+	}
+	var stored v1alpha1.BudgetPolicy
+	if err := kube.Get(ctx, types.NamespacedName{Namespace: "cloud-cost", Name: "forecast-runtime"}, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status.LastNotifiedForecastMonth != "2026-10" {
+		t.Errorf("LastNotifiedForecastMonth = %q, want 2026-10", stored.Status.LastNotifiedForecastMonth)
+	}
+}

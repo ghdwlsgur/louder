@@ -12,7 +12,7 @@ type NotificationPolicySpec struct {
 	CredentialRef corev1.LocalObjectReference `json:"credentialRef"`
 	// Events identifies the event types this policy receives.
 	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:items:Enum=DailySummary;BudgetWarning;BudgetExceeded;BudgetThreshold;CostAnomaly;CollectionFailed
+	// +kubebuilder:validation:items:Enum=DailySummary;BudgetWarning;BudgetExceeded;BudgetThreshold;BudgetForecast;CostAnomaly;CollectionFailed
 	Events []string `json:"events"`
 	// +optional
 	Selector map[string]string `json:"selector,omitempty"`

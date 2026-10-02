@@ -12,7 +12,7 @@ import (
 	"github.com/ghdwlsgur/louder/internal/storage"
 )
 
-var ErrNotifierRequired = errors.New("notifier is required for reached budget thresholds")
+var ErrNotifierRequired = errors.New("notifier is required for budget notification")
 var ErrNotificationPolicyResolution = errors.New("notification policy could not be resolved")
 
 type NotificationResolver func(context.Context, v1alpha1.NotificationPolicy) (notifier.Notifier, error)
@@ -87,6 +87,40 @@ func NotifyBudgetIntents(ctx context.Context, budget v1alpha1.BudgetPolicy, inte
 	return nil
 }
 
+func NotifyBudgetForecastIntent(ctx context.Context, budget v1alpha1.BudgetPolicy, intent BudgetForecastIntent, accounts []v1alpha1.CloudAccount, policies []v1alpha1.NotificationPolicy, resolve NotificationResolver) error {
+	if resolve == nil {
+		return ErrNotifierRequired
+	}
+	selectedAccounts := make([]v1alpha1.CloudAccount, 0, len(accounts))
+	for _, account := range accounts {
+		if account.Spec.Provider != "" && account.Spec.AccountID != "" && matchesSelector(account.Spec.Metadata, budget.Spec.Selector) {
+			selectedAccounts = append(selectedAccounts, account)
+		}
+	}
+	selected := SelectNotificationPolicies("BudgetForecast", policies, selectedAccounts)
+	if len(selected) == 0 {
+		return ErrNotifierRequired
+	}
+	deliveries := make([]notifier.Notifier, 0, len(selected))
+	for _, policy := range selected {
+		delivery, err := resolve(ctx, policy)
+		if err != nil {
+			return fmt.Errorf("%w: %s", ErrNotificationPolicyResolution, policy.Name)
+		}
+		if delivery == nil {
+			return ErrNotifierRequired
+		}
+		deliveries = append(deliveries, delivery)
+	}
+	notification := budgetForecastNotification(intent)
+	for _, delivery := range deliveries {
+		if err := delivery.Send(ctx, notification); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func NotifyDailyAnomalyIntents(ctx context.Context, budget v1alpha1.BudgetPolicy, intents []DailyCostAnomalyIntent, accounts []v1alpha1.CloudAccount, policies []v1alpha1.NotificationPolicy, resolve NotificationResolver) error {
 	if len(intents) == 0 {
 		return nil
@@ -149,6 +183,17 @@ func budgetThresholdNotification(intent BudgetThresholdIntent) notifier.Notifica
 			"Currency":  intent.Currency,
 			"Spend":     intent.Spent,
 			"Threshold": strconv.Itoa(int(intent.ThresholdPercent)) + "%",
+		},
+	}
+}
+
+func budgetForecastNotification(intent BudgetForecastIntent) notifier.Notification {
+	return notifier.Notification{
+		Type: "BudgetForecast", Severity: "Warning", Title: "Monthly budget may be exceeded",
+		Summary: fmt.Sprintf("Budget policy %s projects %s %s for %s against a budget of %d %s.", intent.PolicyName, intent.ProjectedSpend, intent.Currency, intent.Month, intent.Budget, intent.Currency),
+		Details: map[string]string{
+			"Policy": intent.PolicyName, "Month": intent.Month, "Spent": intent.Spent,
+			"ProjectedSpend": intent.ProjectedSpend, "Budget": strconv.FormatInt(intent.Budget, 10), "Currency": intent.Currency,
 		},
 	}
 }

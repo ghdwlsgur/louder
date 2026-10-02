@@ -145,6 +145,10 @@ spec:
                 description: LastNotifiedAnomalyDate is the latest completed UTC date
                   delivered for daily cost anomalies.
                 type: string
+              lastNotifiedForecastMonth:
+                description: LastNotifiedForecastMonth is the UTC month for the last
+                  successfully delivered budget forecast.
+                type: string
               lastNotifiedMonth:
                 description: LastNotifiedMonth is the UTC billing month for the stored
                   threshold receipts.
