@@ -207,7 +207,7 @@ AND
 today - avg_7d > configured_absolute_threshold
 ```
 
-Tests should verify notification intent, not Teams delivery.
+Tests should verify notification intent, not Teams delivery. The kind storage integration also seeds synthetic daily rows into ClickHouse, invokes the full `RunBudgetPolicy` path with Kubernetes resources from a fake client, and verifies that a successful notification is recorded in BudgetPolicy status and deduplicated on the next run.
 
 ---
 
