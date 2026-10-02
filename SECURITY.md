@@ -105,7 +105,6 @@ Louder components should consume Kubernetes Secrets and must not require direct 
 - OCI
 - IBM Cloud
 - Naver Cloud Platform
-- NHN Cloud
 - Alibaba Cloud
 
 Cloud permissions should be read-only and least-privilege for the current cost-collection phase.

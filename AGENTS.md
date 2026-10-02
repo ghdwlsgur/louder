@@ -27,7 +27,6 @@ Supported public clouds:
 - OCI
 - IBM Cloud
 - Naver Cloud Platform (NCP)
-- NHN Cloud
 - Alibaba Cloud
 
 Do not implement resource inventory, cloud activity/audit tracking, automatic remediation, or security governance unless explicitly requested.

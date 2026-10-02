@@ -1,23 +1,20 @@
-# Phase 1 Level 34: NHN Cloud Cost Adapter
+# Phase 1 Level 34: NHN Cloud Support Exclusion
 
 ## Goal
 
-Add an offline-testable NHN Cloud cost adapter only when an officially supported billing source provides costs at the granularity required by Louder's cost anomaly analysis.
+Record the decision to exclude NHN Cloud from Louder's supported-provider scope. The investigated billing APIs did not establish a suitable unattended source for the confirmed ordinary commercial account.
 
 ## Scope
 
-- Target: commercial NHN Cloud, as confirmed by the user.
-- Verify official billing API/export availability, cost granularity, cost basis, currency, authentication, pagination, and data refresh behavior.
-- Preserve the platform's actual daily cost requirement for cost increase/anomaly detection; do not turn monthly totals or published-price calculations into daily actual costs.
-- If an exact daily actual-cost source is available for the target account, implement the adapter with fixtures, contract tests, normalization coverage, Collector registration, CloudAccount configuration, and credential documentation.
-- If no such source is available, record the limitation and keep the adapter pending until an official daily cost feed or export is provided.
+- Remove NHN Cloud from the active supported-provider list and current architecture, test, and credential examples.
+- Preserve the prior API investigation as historical context.
+- Do not implement an NHN adapter or accept NHN as a current CloudAccount provider.
 
 ## Non-goals
 
-- Estimating daily cost from usage quantities and published prices.
-- Dividing monthly costs across days or presenting month-to-date deltas as actual daily cost.
-- Using undocumented console endpoints or automating manual console downloads.
-- Implementing another provider's billing semantics as part of this task.
+- Re-investigating NHN APIs or requesting account-specific access confirmation.
+- Implementing monthly or daily NHN billing collection.
+- Changing provider code or CRD enums.
 
 ## Dependencies and prior documents
 
@@ -39,23 +36,17 @@ Add an offline-testable NHN Cloud cost adapter only when an officially supported
 - NHN Cloud for Public Institutions framework API guide: https://docs.gov-nhncloud.com/ko/nhncloud/ko/public-api/framework-api-gov/
 - NHN Cloud public pricing and billing overview: https://www.nhncloud.com/kr/pricing
 
-## Work items
+## Outcome
 
-1. Verify that commercial NHN Cloud has a supported unattended API/export returning actual daily cost amounts.
-2. Confirm the source's cost semantics, scope, response periods, currency, credentials, pagination, and refresh delay.
-3. Write one public Provider behavior test and observe RED before each implementation slice.
-4. Implement only the approved exact daily behavior with stable IDs, exact decimal parsing, complete-result semantics, and stable provider error classes.
-5. Add sanitized fixtures, contract tests, normalizer coverage, Collector registration, CloudAccount sample, and Vault/ESO setup documentation.
-6. Run focused and repository tests, vet, formatting, manifests, build, and kind smoke when Docker is available; make no live NHN Cloud request.
+- User decision (2026-10-02): exclude NHN Cloud from the supported providers.
+- No adapter was implemented. The commercial partner daily-cost endpoint is restricted to partner-authorized users, and the investigation found no documented general-user billing API/export.
+- This task is closed as a scope decision, not as a completed provider adapter.
 
 ## Completion criteria
 
-- The adapter consumes an officially supported NHN Cloud source that returns actual daily costs for the confirmed commercial account.
-- No monthly-to-daily allocation, price-derived estimate, or undocumented endpoint is used.
-- Credentials remain in Kubernetes Secrets sourced from Vault through ESO.
-- Provider fixtures, contract scenarios, normalization coverage, and failure tests run offline.
-- Documentation states the account scope, source API, exact cost basis, daily granularity, permissions, credential keys, and refresh limitations.
-- Verification results and any checks not run are recorded here.
+- NHN Cloud is absent from current supported-provider lists, architecture/package layouts, and credential/test examples.
+- This plan is in `docs/task/completed/` and clearly states that no adapter was implemented.
+- Historical completed plans may retain references to the earlier pending investigation.
 
 ## Design decisions, risks, and open questions
 
@@ -75,17 +66,13 @@ Add an offline-testable NHN Cloud cost adapter only when an officially supported
 - NHN's public billing FAQ describes charges as monthly, but that does not negate the partner-only daily usage-price API. The distinction is access scope: daily amounts are documented for partners, while a general-user daily cost retrieval interface was not found in the official commercial API catalog.
 - Remaining source question: NHN support or the account owner must confirm whether this ordinary account can be granted access to the partner daily usage-price API, or identify an officially supported general-user daily actual-cost API/export. Any candidate also needs verification of currency, credit/tax/discount treatment, and data freshness before mapping to Louder's common cost basis.
 - Questions for NHN Customer Center before implementation: (1) Is there a supported daily actual-usage-cost API/export for ordinary commercial accounts? (2) Can a resource-owning ordinary account call the documented partner daily endpoint, or is a reseller/partner agreement mandatory? (3) Are `deltaBasicPrice` and `deltaContractPrice` alternatives or additive, and do they include discounts, credits, and taxes? (4) What currency, lookback limit, pagination behavior, and data-finalization delay apply?
-- Keep this plan pending until a daily actual-cost source is established. If the only supported billing endpoint is monthly, do not implement it as a daily provider adapter.
+- At the time of the initial investigation, the adapter remained pending because an accessible actual daily-cost source had not been established.
 
-## Verification plan
+### Final decision (2026-10-02)
 
-- Verify API references and response schemas against official NHN Cloud documentation; record account-specific references supplied by the user or NHN support before implementation.
-- Record a failing public behavior test before each code slice (RED), then a passing result (GREEN).
-- `GOCACHE=/tmp/louder-go-cache go test ./internal/provider/nhn ./internal/provider/contracttest ./internal/normalize ./internal/collector ./internal/controller ./cmd/collector -count=1`
-- `GOCACHE=/tmp/louder-go-cache go test ./... -count=1`
-- `GOCACHE=/tmp/louder-go-cache make vet`
-- `make fmt-check`
-- `GOCACHE=/tmp/louder-go-cache make manifests`
-- `GOCACHE=/tmp/louder-go-cache make build`
-- `make kind-e2e` when Docker is available.
+- The user chose to exclude NHN Cloud from the supported-provider scope. Further API investigation is outside the current plan.
+
+## Verification
+
+- Confirm no supported-provider list or current provider/credential layout includes NHN; explicit exclusion notes and historical task records may retain the name.
 - `git diff --check`

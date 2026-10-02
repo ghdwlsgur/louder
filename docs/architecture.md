@@ -264,7 +264,6 @@ internal/provider/
 ├── oci/
 ├── ibm/
 ├── ncp/
-├── nhn/
 └── alibaba/
 ```
 
@@ -435,7 +434,7 @@ today - avg_7d > configured_absolute_threshold
 
 The Analyzer consumes normalized cost data only.
 
-The Analyzer provides storage-backed monthly budget and daily cost anomaly evaluation in `internal/analyzer`. Monthly tracking sums stored daily records and includes monthly-period records such as NCP invoice totals once, from the start of the current UTC month through the current time. Daily anomaly detection compares the previous complete UTC day with the preceding seven complete UTC days for each provider/account independently. A notification requires both a 1.5x increase and an absolute increase above `BudgetPolicy.spec.dailyAnomaly.absoluteIncreaseThreshold`, expressed in the policy currency. The daily detector currently applies to AWS, Azure, GCP, OCI, IBM Cloud, and Alibaba Cloud records. NCP monthly records and NHN remain excluded from daily anomaly detection. A successful collection timestamp must cover the evaluated day before missing rows can be treated as zero. `EvaluateAndNotifyBudgetPolicies` intersects those accounts with matching `NotificationPolicy` selectors and event subscriptions, then fans notifications out through a caller-supplied resolver. `cmd/analyzer` loads one namespaced BudgetPolicy, CloudAccounts, NotificationPolicies, and referenced webhook Secrets, then reads ClickHouse through the existing cost reader. BudgetPolicy status records successfully delivered threshold percentages for the current UTC month and the last notified daily anomaly UTC date. `CostAnomaly` subscriptions, account selectors, and Teams Secret resolution govern anomaly delivery. The BudgetPolicy controller creates an Analyzer CronJob when a schedule is set and prevents overlapping runs; notification delivery is at-least-once if a status update fails after sending.
+The Analyzer provides storage-backed monthly budget and daily cost anomaly evaluation in `internal/analyzer`. Monthly tracking sums stored daily records and includes monthly-period records such as NCP invoice totals once, from the start of the current UTC month through the current time. Daily anomaly detection compares the previous complete UTC day with the preceding seven complete UTC days for each provider/account independently. A notification requires both a 1.5x increase and an absolute increase above `BudgetPolicy.spec.dailyAnomaly.absoluteIncreaseThreshold`, expressed in the policy currency. The daily detector currently applies to AWS, Azure, GCP, OCI, IBM Cloud, and Alibaba Cloud records. NCP monthly records are excluded from daily anomaly detection; NHN Cloud is outside the supported-provider scope. A successful collection timestamp must cover the evaluated day before missing rows can be treated as zero. `EvaluateAndNotifyBudgetPolicies` intersects those accounts with matching `NotificationPolicy` selectors and event subscriptions, then fans notifications out through a caller-supplied resolver. `cmd/analyzer` loads one namespaced BudgetPolicy, CloudAccounts, NotificationPolicies, and referenced webhook Secrets, then reads ClickHouse through the existing cost reader. BudgetPolicy status records successfully delivered threshold percentages for the current UTC month and the last notified daily anomaly UTC date. `CostAnomaly` subscriptions, account selectors, and Teams Secret resolution govern anomaly delivery. The BudgetPolicy controller creates an Analyzer CronJob when a schedule is set and prevents overlapping runs; notification delivery is at-least-once if a status update fails after sending.
 
 It must not contain CSP API logic.
 
@@ -522,7 +521,6 @@ cloud-finops/
 │   │   ├── oci/
 │   │   ├── ibm/
 │   │   ├── ncp/
-│   │   ├── nhn/
 │   │   └── alibaba/
 │   ├── normalize/
 │   ├── analyzer/
@@ -561,7 +559,6 @@ cloud-finops/
 │   ├── oci/
 │   ├── ibm/
 │   ├── ncp/
-│   ├── nhn/
 │   └── alibaba/
 │
 └── scripts/
@@ -573,7 +570,7 @@ Do not split every logical component into a separate repository or service prema
 
 ## 11. Provider implementation order
 
-Architecture must support all eight providers.
+Architecture must support all seven currently supported providers.
 
 Recommended delivery order:
 
@@ -585,7 +582,6 @@ Azure
 
 P1
 NCP
-NHN Cloud
 
 P2
 OCI

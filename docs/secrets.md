@@ -183,7 +183,6 @@ kv/finops/
 ├── oci/
 ├── ibm/
 ├── ncp/
-├── nhn/
 ├── alibaba/
 └── teams/
 ```
