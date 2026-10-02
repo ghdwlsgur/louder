@@ -179,7 +179,7 @@ A normalization change must update tests intentionally.
 
 ## 6. Analyzer tests
 
-Analyzer tests must operate entirely on normalized data. The monthly budget evaluator tests selector matching, UTC month filtering, exact amount aggregation, threshold ordering, and safe errors for invalid policy input or currency mismatch. Daily anomaly tests verify the seven-day baseline, relative and absolute thresholds, account isolation, currency and cost-basis errors, stale-source rejection, and the eight-day storage window. Its storage-backed service is tested with a fake `CostReader` for account scoping, UTC month bounds, no-match behavior, and read failures. `EvaluateAndNotifyBudget` uses `FakeNotifier` to verify notification payloads, no-send behavior below a threshold, and stopping after a delivery error. `SelectNotificationPolicies` tests event subscription, Teams type, CloudAccount metadata selectors, and deterministic policy ordering. `RunBudgetPolicy` additionally tests month-scoped threshold receipts, `CostAnomaly` payload routing, per-UTC-date duplicate suppression, and failure-before-recording behavior.
+Analyzer tests must operate entirely on normalized data. The monthly budget evaluator tests selector matching, UTC month filtering, exact amount aggregation, threshold ordering, and safe errors for invalid policy input or currency mismatch. Forecast tests project month-to-date daily spend at a constant calendar-day pace, check month length and budget boundaries, and exclude NCP monthly invoice totals. Daily anomaly tests verify the seven-day baseline, relative and absolute thresholds, account isolation, currency and cost-basis errors, stale-source rejection, and the eight-day storage window. The storage-backed services are tested with a fake `CostReader` for account scoping, UTC month bounds, no-match behavior, and read failures. `EvaluateAndNotifyBudget` uses `FakeNotifier` to verify notification payloads, no-send behavior below a threshold, and stopping after a delivery error. `SelectNotificationPolicies` tests event subscription, Teams type, CloudAccount metadata selectors, and deterministic policy ordering. `RunBudgetPolicy` additionally tests month-scoped threshold and forecast receipts, `BudgetForecast` and `CostAnomaly` payload routing, duplicate suppression, and failure-before-recording behavior.
 
 Do not call live provider APIs.
 
@@ -207,7 +207,7 @@ AND
 today - avg_7d > configured_absolute_threshold
 ```
 
-Tests should verify notification intent, not Teams delivery. The kind storage integration also seeds synthetic daily rows into ClickHouse, invokes the full `RunBudgetPolicy` path with Kubernetes resources from a fake client, and verifies that a successful notification is recorded in BudgetPolicy status and deduplicated on the next run.
+Tests should verify notification intent, not Teams delivery. Forecasts use current UTC month-to-date daily spend divided by the current UTC day number and multiplied by the number of days in that month. This simple pace estimate excludes NCP monthly invoice records and may be affected by provider data delays. A `BudgetForecast` notification is sent only when projected spend is strictly above the budget and is recorded once per UTC month after successful delivery. The kind storage integration seeds synthetic daily rows into ClickHouse, invokes the full `RunBudgetPolicy` path with Kubernetes resources from a fake client, and verifies notification status receipts and duplicate suppression for daily anomalies and forecasts.
 
 ---
 
@@ -332,7 +332,7 @@ The local targets cover distinct slices:
 |---|---|
 | `make kind-e2e` | CloudAccount missing-Secret status, CronJob creation, a completed fixture Collector Job, and `CollectionReady=True` status reporting |
 | `make kind-e2e-secrets` | Vault -> ESO -> Secret -> CloudAccount readiness and Vault failure/recovery; its CloudAccount keeps collection disabled |
-| `make kind-e2e-storage` | AWS replay deduplication, NCP monthly collection/read/budget alert, stored daily anomaly evaluation and `CostAnomaly` payload, and the BudgetPolicy-owned Analyzer CronJob with its scoped ServiceAccount |
+| `make kind-e2e-storage` | AWS replay deduplication, NCP monthly collection/read/budget alert, stored daily anomaly and budget forecast evaluation with notification receipts, and the BudgetPolicy-owned Analyzer CronJob with its scoped ServiceAccount |
 
 These targets do not verify a production billing API or a single combined Vault/ESO/Collector/ClickHouse flow. The storage E2E uses runtime-generated synthetic ClickHouse credentials and an ephemeral database; it does not exercise production Vault provisioning.
 
