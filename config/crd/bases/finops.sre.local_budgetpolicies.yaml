@@ -49,6 +49,16 @@ spec:
                 - currency
                 - value
                 type: object
+              dailyAnomaly:
+                properties:
+                  absoluteIncreaseThreshold:
+                    description: AbsoluteIncreaseThreshold is expressed in BudgetPolicy.spec.amount.currency.
+                    format: int64
+                    minimum: 1
+                    type: integer
+                required:
+                - absoluteIncreaseThreshold
+                type: object
               forecast:
                 properties:
                   enabled:
@@ -131,6 +141,10 @@ spec:
                   - type
                   type: object
                 type: array
+              lastNotifiedAnomalyDate:
+                description: LastNotifiedAnomalyDate is the latest completed UTC date
+                  delivered for daily cost anomalies.
+                type: string
               lastNotifiedMonth:
                 description: LastNotifiedMonth is the UTC billing month for the stored
                   threshold receipts.

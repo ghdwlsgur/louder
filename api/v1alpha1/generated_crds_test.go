@@ -184,6 +184,7 @@ func TestGeneratedBudgetPolicySchemaIncludesOptionalSchedule(t *testing.T) {
 	type schemaNode struct {
 		Type       string                `json:"type"`
 		Format     string                `json:"format"`
+		Minimum    *int64                `json:"minimum"`
 		Items      *schemaNode           `json:"items"`
 		MinLength  *int                  `json:"minLength"`
 		Required   []string              `json:"required"`
@@ -204,6 +205,11 @@ func TestGeneratedBudgetPolicySchemaIncludesOptionalSchedule(t *testing.T) {
 	}
 	crdRoot := definition.Spec.Versions[0].Schema.OpenAPIV3Schema
 	root := crdRoot.Properties["spec"]
+	dailyAnomaly := root.Properties["dailyAnomaly"]
+	threshold := dailyAnomaly.Properties["absoluteIncreaseThreshold"]
+	if dailyAnomaly.Type != "object" || threshold.Type != "integer" || threshold.Format != "int64" || threshold.Minimum == nil || *threshold.Minimum != 1 {
+		t.Errorf("spec.dailyAnomaly.absoluteIncreaseThreshold schema = %#v, want optional positive int64", threshold)
+	}
 	schedule := root.Properties["schedule"]
 	if schedule.Type != "string" || schedule.MinLength == nil || *schedule.MinLength != 1 {
 		t.Errorf("spec.schedule schema = %#v, want non-empty string", schedule)
@@ -218,6 +224,9 @@ func TestGeneratedBudgetPolicySchemaIncludesOptionalSchedule(t *testing.T) {
 	thresholds := status.Properties["notifiedThresholds"]
 	if thresholds.Type != "array" || thresholds.Items == nil || thresholds.Items.Type != "integer" || thresholds.Items.Format != "int32" {
 		t.Errorf("status.notifiedThresholds schema = %#v, want int32 array", thresholds)
+	}
+	if status.Properties["lastNotifiedAnomalyDate"].Type != "string" {
+		t.Errorf("status.lastNotifiedAnomalyDate schema = %#v, want string", status.Properties["lastNotifiedAnomalyDate"])
 	}
 }
 

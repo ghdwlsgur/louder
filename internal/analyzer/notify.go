@@ -87,6 +87,57 @@ func NotifyBudgetIntents(ctx context.Context, budget v1alpha1.BudgetPolicy, inte
 	return nil
 }
 
+func NotifyDailyAnomalyIntents(ctx context.Context, budget v1alpha1.BudgetPolicy, intents []DailyCostAnomalyIntent, accounts []v1alpha1.CloudAccount, policies []v1alpha1.NotificationPolicy, resolve NotificationResolver) error {
+	if len(intents) == 0 {
+		return nil
+	}
+	if resolve == nil {
+		return ErrNotifierRequired
+	}
+	accountsByScope := make(map[accountKey]v1alpha1.CloudAccount, len(accounts))
+	for _, account := range accounts {
+		if account.Spec.Provider != "" && account.Spec.AccountID != "" && matchesSelector(account.Spec.Metadata, budget.Spec.Selector) {
+			accountsByScope[accountKey{provider: account.Spec.Provider, accountID: account.Spec.AccountID}] = account
+		}
+	}
+	type destination struct {
+		delivery notifier.Notifier
+		intents  []DailyCostAnomalyIntent
+	}
+	destinations := make([]destination, 0, len(policies))
+	for _, policy := range SelectNotificationPolicies("CostAnomaly", policies, accounts) {
+		matched := make([]DailyCostAnomalyIntent, 0)
+		for _, intent := range intents {
+			account, exists := accountsByScope[accountKey{provider: intent.Provider, accountID: intent.BillingAccountID}]
+			if exists && matchesSelector(account.Spec.Metadata, policy.Spec.Selector) {
+				matched = append(matched, intent)
+			}
+		}
+		if len(matched) == 0 {
+			continue
+		}
+		delivery, err := resolve(ctx, policy)
+		if err != nil {
+			return fmt.Errorf("%w: %s", ErrNotificationPolicyResolution, policy.Name)
+		}
+		if delivery == nil {
+			return ErrNotifierRequired
+		}
+		destinations = append(destinations, destination{delivery: delivery, intents: matched})
+	}
+	if len(destinations) == 0 {
+		return ErrNotifierRequired
+	}
+	for _, destination := range destinations {
+		for _, intent := range destination.intents {
+			if err := destination.delivery.Send(ctx, dailyAnomalyNotification(intent)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func budgetThresholdNotification(intent BudgetThresholdIntent) notifier.Notification {
 	return notifier.Notification{
 		Type:     "BudgetThreshold",
@@ -98,6 +149,18 @@ func budgetThresholdNotification(intent BudgetThresholdIntent) notifier.Notifica
 			"Currency":  intent.Currency,
 			"Spend":     intent.Spent,
 			"Threshold": strconv.Itoa(int(intent.ThresholdPercent)) + "%",
+		},
+	}
+}
+
+func dailyAnomalyNotification(intent DailyCostAnomalyIntent) notifier.Notification {
+	return notifier.Notification{
+		Type: "CostAnomaly", Severity: "Warning", Title: "Daily cost increase detected",
+		Summary: fmt.Sprintf("%s cost on %s was %s %s above the seven-day average.", intent.Provider, intent.Date.Format("2006-01-02"), intent.Increase, intent.Currency),
+		Details: map[string]string{
+			"Policy": intent.PolicyName, "Provider": intent.Provider, "BillingAccountID": intent.BillingAccountID,
+			"Date": intent.Date.Format("2006-01-02"), "Today": intent.Today,
+			"BaselineAverage": intent.BaselineAverage, "Increase": intent.Increase, "Currency": intent.Currency,
 		},
 	}
 }

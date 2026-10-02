@@ -41,14 +41,11 @@ func RunBudgetPolicy(ctx context.Context, kube client.Client, reader storage.Cos
 		return nil, err
 	}
 	intents, err := EvaluateStoredBudget(ctx, reader, budget, accounts.Items, now)
-	if err != nil || len(intents) == 0 {
-		return intents, err
+	if err != nil {
+		return nil, err
 	}
 	month := now.UTC().Format("2006-01")
 	intents = pendingBudgetThresholds(intents, budget.Status, month)
-	if len(intents) == 0 {
-		return intents, nil
-	}
 	resolve := func(ctx context.Context, policy v1alpha1.NotificationPolicy) (notifier.Notifier, error) {
 		if newTeamsNotifier == nil {
 			return nil, ErrNotifierRequired
@@ -63,16 +60,36 @@ func RunBudgetPolicy(ctx context.Context, kube client.Client, reader storage.Cos
 		}
 		return newTeamsNotifier(string(endpoint))
 	}
-	if err := NotifyBudgetIntents(ctx, budget, intents, accounts.Items, policies.Items, resolve); err != nil {
+	if len(intents) > 0 {
+		if err := NotifyBudgetIntents(ctx, budget, intents, accounts.Items, policies.Items, resolve); err != nil {
+			return intents, err
+		}
+		notified := append([]int32(nil), intentsToPercentages(intents)...)
+		if budget.Status.LastNotifiedMonth == month {
+			notified = append(notified, budget.Status.NotifiedThresholds...)
+		}
+		sort.Slice(notified, func(i, j int) bool { return notified[i] < notified[j] })
+		budget.Status.LastNotifiedMonth = month
+		budget.Status.NotifiedThresholds = compactThresholds(notified)
+		if err := kube.Status().Update(ctx, &budget); err != nil {
+			return intents, fmt.Errorf("%w", ErrBudgetNotificationStatusUpdate)
+		}
+	}
+	anomalyIntents, err := EvaluateStoredDailyCostAnomalies(ctx, reader, budget, accounts.Items, now)
+	if err != nil {
 		return intents, err
 	}
-	notified := append([]int32(nil), intentsToPercentages(intents)...)
-	if budget.Status.LastNotifiedMonth == month {
-		notified = append(notified, budget.Status.NotifiedThresholds...)
+	if len(anomalyIntents) == 0 {
+		return intents, nil
 	}
-	sort.Slice(notified, func(i, j int) bool { return notified[i] < notified[j] })
-	budget.Status.LastNotifiedMonth = month
-	budget.Status.NotifiedThresholds = compactThresholds(notified)
+	anomalyDate := anomalyIntents[0].Date.Format("2006-01-02")
+	if budget.Status.LastNotifiedAnomalyDate == anomalyDate {
+		return intents, nil
+	}
+	if err := NotifyDailyAnomalyIntents(ctx, budget, anomalyIntents, accounts.Items, policies.Items, resolve); err != nil {
+		return intents, err
+	}
+	budget.Status.LastNotifiedAnomalyDate = anomalyDate
 	if err := kube.Status().Update(ctx, &budget); err != nil {
 		return intents, fmt.Errorf("%w", ErrBudgetNotificationStatusUpdate)
 	}

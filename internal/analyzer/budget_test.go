@@ -90,6 +90,16 @@ func TestEvaluateBudgetRejectsInvalidThresholdWithoutPartialIntents(t *testing.T
 	}
 }
 
+func TestValidateBudgetPolicyRejectsNonPositiveDailyAnomalyThreshold(t *testing.T) {
+	policy := v1alpha1.BudgetPolicy{Spec: v1alpha1.BudgetPolicySpec{
+		Amount:       v1alpha1.BudgetAmount{Value: 1000, Currency: "USD"},
+		DailyAnomaly: &v1alpha1.DailyAnomalySpec{AbsoluteIncreaseThreshold: 0},
+	}}
+	if err := validateBudgetPolicy(policy); !errors.Is(err, ErrInvalidBudgetPolicy) {
+		t.Fatalf("validateBudgetPolicy() error = %v, want ErrInvalidBudgetPolicy", err)
+	}
+}
+
 func TestEvaluateBudgetRejectsSelectedAccountCurrencyMismatch(t *testing.T) {
 	policy := v1alpha1.BudgetPolicy{Spec: v1alpha1.BudgetPolicySpec{
 		Amount:     v1alpha1.BudgetAmount{Value: 100, Currency: "USD"},

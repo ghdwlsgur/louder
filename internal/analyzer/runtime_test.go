@@ -216,3 +216,50 @@ func TestRunBudgetPolicyDoesNotRecordThresholdWhenDeliveryFails(t *testing.T) {
 		t.Errorf("status = %#v, want no delivery receipt after failed send", stored.Status)
 	}
 }
+
+func TestRunBudgetPolicySendsAndDeduplicatesDailyAnomaly(t *testing.T) {
+	now := time.Date(2026, time.October, 2, 12, 0, 0, 0, time.UTC)
+	budget := &v1alpha1.BudgetPolicy{ObjectMeta: metav1.ObjectMeta{Name: "sre-monthly", Namespace: "costs"}, Spec: v1alpha1.BudgetPolicySpec{
+		Selector: map[string]string{"team": "sre"}, Amount: v1alpha1.BudgetAmount{Value: 1000, Currency: "USD"},
+		DailyAnomaly: &v1alpha1.DailyAnomalySpec{AbsoluteIncreaseThreshold: 5},
+	}}
+	collected := metav1.NewTime(time.Date(2026, time.October, 2, 0, 5, 0, 0, time.UTC))
+	account := &v1alpha1.CloudAccount{ObjectMeta: metav1.ObjectMeta{Name: "aws-prod", Namespace: "costs"}, Spec: v1alpha1.CloudAccountSpec{
+		Provider: "aws", AccountID: "123", Metadata: map[string]string{"team": "sre"}, Collection: v1alpha1.CollectionSpec{Enabled: true},
+	}, Status: v1alpha1.CloudAccountStatus{LastSuccessfulCollectionTime: &collected}}
+	policy := &v1alpha1.NotificationPolicy{ObjectMeta: metav1.ObjectMeta{Name: "daily-teams", Namespace: "costs"}, Spec: v1alpha1.NotificationPolicySpec{
+		Type: "teams", Events: []string{"CostAnomaly"}, Selector: map[string]string{"team": "sre"}, CredentialRef: corev1.LocalObjectReference{Name: "teams-hook"},
+	}}
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "teams-hook", Namespace: "costs"}, Data: map[string][]byte{"TEAMS_WEBHOOK_URL": []byte("https://teams.example.test/hook")}}
+	scheme := runtime.NewScheme()
+	if err := v1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	kube := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(budget).WithObjects(budget, account, policy, secret).Build()
+	targetDay := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
+	delivery := &notifier.FakeNotifier{}
+	factory := func(string) (notifier.Notifier, error) { return delivery, nil }
+
+	for range 2 {
+		if _, err := RunBudgetPolicy(context.Background(), kube, &analyzerTestReader{records: anomalyRecords(targetDay, "25.00")}, "costs", "sre-monthly", factory, now); err != nil {
+			t.Fatalf("RunBudgetPolicy() error = %v", err)
+		}
+	}
+	if len(delivery.Notifications) != 1 {
+		t.Fatalf("notifications = %#v, want one daily anomaly notification after two runs", delivery.Notifications)
+	}
+	notification := delivery.Notifications[0]
+	if notification.Type != "CostAnomaly" || notification.Details["Date"] != "2026-10-01" || notification.Details["Provider"] != "aws" {
+		t.Errorf("daily notification = %#v, want CostAnomaly for aws on 2026-10-01", notification)
+	}
+	var stored v1alpha1.BudgetPolicy
+	if err := kube.Get(context.Background(), types.NamespacedName{Namespace: "costs", Name: "sre-monthly"}, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status.LastNotifiedAnomalyDate != "2026-10-01" {
+		t.Errorf("LastNotifiedAnomalyDate = %q, want 2026-10-01", stored.Status.LastNotifiedAnomalyDate)
+	}
+}
