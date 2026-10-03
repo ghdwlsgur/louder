@@ -62,3 +62,14 @@ func ProvidesDailyCostRecords(name string) bool {
 		return false
 	}
 }
+
+func ExpectedDailyCostDataDelay(name string) (time.Duration, bool) {
+	switch name {
+	case "aws", "gcp", "alibaba":
+		return 24 * time.Hour, true
+	case "azure":
+		return 72 * time.Hour, true
+	default:
+		return 0, false
+	}
+}

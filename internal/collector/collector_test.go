@@ -10,6 +10,7 @@ import (
 
 	"github.com/ghdwlsgur/louder/internal/normalize"
 	"github.com/ghdwlsgur/louder/internal/provider"
+	"github.com/ghdwlsgur/louder/internal/storage"
 )
 
 func TestPreviousEightCompleteUTCDays(t *testing.T) {
@@ -121,7 +122,8 @@ func TestRunWithRegistryAndStorageCollectsPreviousEightCompleteUTCDays(t *testin
 		t.Fatal(err)
 	}
 	now := time.Date(2026, time.October, 1, 3, 15, 0, 0, time.FixedZone("UTC-7", -7*60*60))
-	if err := RunWithRegistryAndStorage(context.Background(), registry, "aws", "123456789012", now, &bytes.Buffer{}, &collectorTestWriter{}); err != nil {
+	writer := &collectorTestRunWriter{}
+	if err := RunWithRegistryAndStorage(context.Background(), registry, "aws", "123456789012", now, &bytes.Buffer{}, writer); err != nil {
 		t.Fatalf("RunWithRegistryAndStorage() error = %v", err)
 	}
 	wantStart := time.Date(2026, time.September, 23, 0, 0, 0, 0, time.UTC)
@@ -129,6 +131,29 @@ func TestRunWithRegistryAndStorageCollectsPreviousEightCompleteUTCDays(t *testin
 	if !fake.request.StartTime.Equal(wantStart) || !fake.request.EndTime.Equal(wantEnd) {
 		t.Errorf("CollectRequest window = (%s, %s), want eight complete UTC days (%s, %s)", fake.request.StartTime, fake.request.EndTime, wantStart, wantEnd)
 	}
+	if len(writer.runs) != 1 {
+		t.Fatalf("collection runs = %#v, want one successful run", writer.runs)
+	}
+	run := writer.runs[0]
+	if run.Provider != "aws" || run.BillingAccountID != "123456789012" || !run.WindowStart.Equal(wantStart) || !run.WindowEnd.Equal(wantEnd) {
+		t.Errorf("collection run = %#v, want the provider account and exact requested interval", run)
+	}
+	if run.RecordCount != 1 || !run.LatestUsageEnd.Equal(time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Errorf("collection result = count %d, latest usage end %s; want one record through the returned period", run.RecordCount, run.LatestUsageEnd)
+	}
+	if run.StartedAt.IsZero() || run.CompletedAt.IsZero() || run.CompletedAt.Before(run.StartedAt) {
+		t.Errorf("collection timestamps = (%s, %s), want separate valid start/completion times", run.StartedAt, run.CompletedAt)
+	}
+}
+
+type collectorTestRunWriter struct {
+	collectorTestWriter
+	runs []storage.CollectionRun
+}
+
+func (w *collectorTestRunWriter) WriteCollectionRun(_ context.Context, run storage.CollectionRun) error {
+	w.runs = append(w.runs, run)
+	return nil
 }
 
 func TestRunWithStoragePersistsNormalizedAWSFixture(t *testing.T) {

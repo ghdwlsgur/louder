@@ -11,4 +11,12 @@ if [[ "$rows" != "$expected" ]]; then
   exit 1
 fi
 
-printf 'ClickHouse fixture persistence and replay deduplication passed\n'
+run_query="SELECT count(), any(record_count), any(has_latest_usage_end) FROM collection_runs FINAL WHERE provider = 'aws' AND billing_account_id = 'synthetic-kind-account'"
+run_metadata=$(kubectl --context "$context" exec --namespace cloud-cost deployment/clickhouse -- \
+  sh -c 'clickhouse-client --user="$CLICKHOUSE_USER" --password="$CLICKHOUSE_PASSWORD" --database="$CLICKHOUSE_DB" --format=TabSeparatedRaw --query="$1"' sh "$run_query")
+if [[ "$run_metadata" != $'1\t1\t1' ]]; then
+  printf 'Expected one persisted successful collection run with usage coverage, got %q\n' "$run_metadata" >&2
+  exit 1
+fi
+
+printf 'ClickHouse fixture persistence, replay deduplication, and collection metadata passed\n'

@@ -168,9 +168,27 @@ spec:
               lastCollectionTime:
                 format: date-time
                 type: string
+              lastCostDataIngestedAt:
+                format: date-time
+                type: string
+              lastObservedUsagePeriodEnd:
+                format: date-time
+                type: string
               lastSuccessfulCollectionTime:
                 format: date-time
                 type: string
+              lastSuccessfulCollectionWindow:
+                properties:
+                  end:
+                    format: date-time
+                    type: string
+                  start:
+                    format: date-time
+                    type: string
+                required:
+                - end
+                - start
+                type: object
             type: object
         type: object
     served: true

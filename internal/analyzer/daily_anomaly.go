@@ -150,9 +150,6 @@ func EvaluateStoredDailyCostAnomalies(ctx context.Context, reader storage.CostRe
 		if !account.Spec.Collection.Enabled || !provider.ProvidesDailyCostRecords(account.Spec.Provider) || account.Spec.AccountID == "" || !matchesSelector(account.Spec.Metadata, policy.Spec.Selector) {
 			continue
 		}
-		if account.Status.LastSuccessfulCollectionTime == nil || account.Status.LastSuccessfulCollectionTime.Time.Before(windowEnd) {
-			return nil, ErrDailyAnomalySourceStale
-		}
 		selectedAccounts = append(selectedAccounts, account)
 		scopes = append(scopes, storage.AccountScope{Provider: account.Spec.Provider, BillingAccountID: account.Spec.AccountID})
 	}

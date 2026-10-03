@@ -35,6 +35,11 @@ type CollectionSpec struct {
 	Schedule string `json:"schedule"`
 }
 
+type CollectionWindow struct {
+	Start metav1.Time `json:"start"`
+	End   metav1.Time `json:"end"`
+}
+
 // CloudAccountStatus reports control-plane and collection state.
 type CloudAccountStatus struct {
 	// +optional
@@ -43,6 +48,12 @@ type CloudAccountStatus struct {
 	LastCollectionTime *metav1.Time `json:"lastCollectionTime,omitempty"`
 	// +optional
 	LastSuccessfulCollectionTime *metav1.Time `json:"lastSuccessfulCollectionTime,omitempty"`
+	// +optional
+	LastSuccessfulCollectionWindow *CollectionWindow `json:"lastSuccessfulCollectionWindow,omitempty"`
+	// +optional
+	LastObservedUsagePeriodEnd *metav1.Time `json:"lastObservedUsagePeriodEnd,omitempty"`
+	// +optional
+	LastCostDataIngestedAt *metav1.Time `json:"lastCostDataIngestedAt,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -91,6 +102,18 @@ func (in *CloudAccount) DeepCopyInto(out *CloudAccount) {
 	}
 	if in.Status.LastSuccessfulCollectionTime != nil {
 		out.Status.LastSuccessfulCollectionTime = in.Status.LastSuccessfulCollectionTime.DeepCopy()
+	}
+	if in.Status.LastSuccessfulCollectionWindow != nil {
+		out.Status.LastSuccessfulCollectionWindow = &CollectionWindow{
+			Start: *in.Status.LastSuccessfulCollectionWindow.Start.DeepCopy(),
+			End:   *in.Status.LastSuccessfulCollectionWindow.End.DeepCopy(),
+		}
+	}
+	if in.Status.LastObservedUsagePeriodEnd != nil {
+		out.Status.LastObservedUsagePeriodEnd = in.Status.LastObservedUsagePeriodEnd.DeepCopy()
+	}
+	if in.Status.LastCostDataIngestedAt != nil {
+		out.Status.LastCostDataIngestedAt = in.Status.LastCostDataIngestedAt.DeepCopy()
 	}
 }
 
