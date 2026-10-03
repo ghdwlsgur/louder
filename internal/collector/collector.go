@@ -12,6 +12,7 @@ import (
 
 	"github.com/ghdwlsgur/louder/internal/normalize"
 	"github.com/ghdwlsgur/louder/internal/provider"
+	"github.com/ghdwlsgur/louder/internal/storage"
 )
 
 type CostWriter interface {
@@ -125,13 +126,14 @@ func RunProvider(ctx context.Context, cloudProvider provider.Provider, request p
 	return encodeRecords(output, records)
 }
 
-func RunProviderWithStorage(ctx context.Context, cloudProvider provider.Provider, request provider.CollectRequest, output io.Writer, storage CostWriter) error {
-	if cloudProvider == nil || output == nil || storage == nil {
+func RunProviderWithStorage(ctx context.Context, cloudProvider provider.Provider, request provider.CollectRequest, output io.Writer, costStorage CostWriter) error {
+	if cloudProvider == nil || output == nil || costStorage == nil {
 		return fmt.Errorf("provider, output, and cost storage are required")
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	startedAt := time.Now().UTC()
 	if err := cloudProvider.ValidateCredentials(ctx); err != nil {
 		return err
 	}
@@ -139,22 +141,65 @@ func RunProviderWithStorage(ctx context.Context, cloudProvider provider.Provider
 	if err != nil {
 		return err
 	}
-	return persistAndEncode(ctx, records, output, storage)
+	normalized, err := normalizeRecords(records)
+	if err != nil {
+		return err
+	}
+	if err := costStorage.WriteCosts(ctx, normalized); err != nil {
+		return fmt.Errorf("persist cost records: %w", err)
+	}
+	completedAt := time.Now().UTC()
+	if runWriter, ok := costStorage.(storage.CollectionRunWriter); ok {
+		collectionRun := storage.CollectionRun{
+			Provider: requestProvider(records, cloudProvider.Metadata(ctx).Name), BillingAccountID: request.AccountID,
+			WindowStart: request.StartTime.UTC(), WindowEnd: request.EndTime.UTC(), StartedAt: startedAt,
+			CompletedAt: completedAt, RecordCount: uint64(len(records)), LatestUsageEnd: latestUsageEnd(records),
+		}
+		if err := runWriter.WriteCollectionRun(ctx, collectionRun); err != nil {
+			return fmt.Errorf("persist collection run: %w", err)
+		}
+	}
+	return encodeRecords(output, records)
 }
 
 func persistAndEncode(ctx context.Context, records []provider.RawCostRecord, output io.Writer, storage CostWriter) error {
-	normalized := make([]normalize.CostRecord, 0, len(records))
-	for _, record := range records {
-		cost, err := normalize.Normalize(record)
-		if err != nil {
-			return fmt.Errorf("normalize cost record: %w", err)
-		}
-		normalized = append(normalized, cost)
+	normalized, err := normalizeRecords(records)
+	if err != nil {
+		return err
 	}
 	if err := storage.WriteCosts(ctx, normalized); err != nil {
 		return fmt.Errorf("persist cost records: %w", err)
 	}
 	return encodeRecords(output, records)
+}
+
+func normalizeRecords(records []provider.RawCostRecord) ([]normalize.CostRecord, error) {
+	normalized := make([]normalize.CostRecord, 0, len(records))
+	for _, record := range records {
+		cost, err := normalize.Normalize(record)
+		if err != nil {
+			return nil, fmt.Errorf("normalize cost record: %w", err)
+		}
+		normalized = append(normalized, cost)
+	}
+	return normalized, nil
+}
+
+func latestUsageEnd(records []provider.RawCostRecord) time.Time {
+	var latest time.Time
+	for _, record := range records {
+		if record.UsageEnd.After(latest) {
+			latest = record.UsageEnd.UTC()
+		}
+	}
+	return latest
+}
+
+func requestProvider(records []provider.RawCostRecord, fallback string) string {
+	if len(records) > 0 && records[0].Provider != "" {
+		return records[0].Provider
+	}
+	return fallback
 }
 
 func encodeRecords(output io.Writer, records []provider.RawCostRecord) error {

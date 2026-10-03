@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ghdwlsgur/louder/internal/normalize"
+	"github.com/ghdwlsgur/louder/internal/storage"
 )
 
 func TestWriteCostsWritesOneBatchWithUTCIngestionTime(t *testing.T) {
@@ -36,6 +37,48 @@ func TestWriteCostsWritesOneBatchWithUTCIngestionTime(t *testing.T) {
 	}
 	if !inserter.insertedAt.Equal(insertedAt.UTC()) {
 		t.Errorf("ingested_at = %s, want %s", inserter.insertedAt, insertedAt.UTC())
+	}
+}
+
+func TestWriteCollectionRunPersistsExactWindowAndSourcePeriod(t *testing.T) {
+	writer := &fakeCollectionRunInserter{}
+	ingestedAt := time.Date(2026, time.October, 1, 3, 17, 1, 0, time.UTC)
+	store := New(writer, func() time.Time { return ingestedAt })
+	run := storage.CollectionRun{
+		Provider: "aws", BillingAccountID: "123456789012",
+		WindowStart: time.Date(2026, time.September, 23, 0, 0, 0, 0, time.UTC),
+		WindowEnd:   time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC),
+		StartedAt:   time.Date(2026, time.October, 1, 3, 15, 0, 0, time.UTC),
+		CompletedAt: time.Date(2026, time.October, 1, 3, 17, 0, 0, time.UTC),
+		RecordCount: 8, LatestUsageEnd: time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC),
+	}
+	if err := store.WriteCollectionRun(context.Background(), run); err != nil {
+		t.Fatalf("WriteCollectionRun() error = %v", err)
+	}
+	want := run
+	want.DataIngestedAt = ingestedAt
+	if writer.run != want {
+		t.Errorf("stored collection run = %#v, want %#v", writer.run, want)
+	}
+}
+
+func TestReadCollectionRunsScopesAccountAndUTCAnalysisWindow(t *testing.T) {
+	start := time.Date(2026, time.October, 1, 9, 0, 0, 0, time.FixedZone("UTC+9", 9*60*60))
+	end := start.AddDate(0, 0, 1)
+	want := []storage.CollectionRun{{Provider: "aws", BillingAccountID: "123", WindowStart: start.UTC(), WindowEnd: end.UTC()}}
+	reader := &fakeCollectionRunInserter{readRuns: want}
+	store := New(reader, time.Now)
+	accounts := []AccountScope{{Provider: "aws", BillingAccountID: "123"}}
+
+	got, err := store.ReadCollectionRuns(context.Background(), accounts, start, end)
+	if err != nil {
+		t.Fatalf("ReadCollectionRuns() error = %v", err)
+	}
+	if len(got) != 1 || got[0] != want[0] {
+		t.Fatalf("ReadCollectionRuns() = %#v, want %#v", got, want)
+	}
+	if reader.readRunCalls != 1 || !equalScopes(reader.readRunAccounts, accounts) || !reader.readRunStart.Equal(start.UTC()) || !reader.readRunEnd.Equal(end.UTC()) {
+		t.Errorf("run reader call = %d scopes=%#v range=[%s,%s), want scoped UTC interval", reader.readRunCalls, reader.readRunAccounts, reader.readRunStart, reader.readRunEnd)
 	}
 }
 
@@ -124,6 +167,29 @@ type fakeInserter struct {
 	readStart    time.Time
 	readEnd      time.Time
 	readRecords  []normalize.CostRecord
+}
+
+type fakeCollectionRunInserter struct {
+	fakeInserter
+	run             storage.CollectionRun
+	readRuns        []storage.CollectionRun
+	readRunCalls    int
+	readRunAccounts []AccountScope
+	readRunStart    time.Time
+	readRunEnd      time.Time
+}
+
+func (f *fakeCollectionRunInserter) InsertCollectionRun(_ context.Context, run storage.CollectionRun) error {
+	f.run = run
+	return nil
+}
+
+func (f *fakeCollectionRunInserter) ReadCollectionRuns(_ context.Context, accounts []AccountScope, start, end time.Time) ([]storage.CollectionRun, error) {
+	f.readRunCalls++
+	f.readRunAccounts = append([]AccountScope(nil), accounts...)
+	f.readRunStart = start
+	f.readRunEnd = end
+	return f.readRuns, nil
 }
 
 func (f *fakeInserter) InsertBatch(_ context.Context, records []normalize.CostRecord, insertedAt time.Time) error {

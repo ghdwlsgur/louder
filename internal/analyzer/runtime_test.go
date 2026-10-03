@@ -11,12 +11,23 @@ import (
 	"github.com/ghdwlsgur/louder/internal/normalize"
 	"github.com/ghdwlsgur/louder/internal/notifier"
 	"github.com/ghdwlsgur/louder/internal/provider"
+	"github.com/ghdwlsgur/louder/internal/storage"
 	corev1 "k8s.io/api/core/v1"
+	apiMeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
+
+type runtimeFreshnessReader struct {
+	*analyzerTestReader
+	runs []storage.CollectionRun
+}
+
+func (r *runtimeFreshnessReader) ReadCollectionRuns(context.Context, []storage.AccountScope, time.Time, time.Time) ([]storage.CollectionRun, error) {
+	return r.runs, nil
+}
 
 func TestRunBudgetPolicyLoadsNamespaceResourcesAndSends(t *testing.T) {
 	now := time.Date(2026, time.October, 5, 0, 0, 0, 0, time.UTC)
@@ -61,6 +72,47 @@ func TestRunBudgetPolicyLoadsNamespaceResourcesAndSends(t *testing.T) {
 	}
 	if gotEndpoint != string(secret.Data["TEAMS_WEBHOOK_URL"]) {
 		t.Errorf("notifier endpoint = %q, want Secret-provided endpoint", gotEndpoint)
+	}
+}
+
+func TestRunBudgetPolicyExcludesStaleCostDataAndUpdatesAccountReadiness(t *testing.T) {
+	now := time.Date(2026, time.October, 5, 12, 0, 0, 0, time.UTC)
+	budget := &v1alpha1.BudgetPolicy{ObjectMeta: metav1.ObjectMeta{Name: "monthly", Namespace: "costs"}, Spec: v1alpha1.BudgetPolicySpec{
+		Selector: map[string]string{"team": "sre"}, Amount: v1alpha1.BudgetAmount{Value: 100, Currency: "USD"}, Thresholds: []int32{80},
+	}}
+	staleAccount := &v1alpha1.CloudAccount{ObjectMeta: metav1.ObjectMeta{Name: "stale", Namespace: "costs"}, Spec: v1alpha1.CloudAccountSpec{Provider: "aws", AccountID: "stale-id", Metadata: map[string]string{"team": "sre"}}}
+	freshAccount := &v1alpha1.CloudAccount{ObjectMeta: metav1.ObjectMeta{Name: "fresh", Namespace: "costs"}, Spec: v1alpha1.CloudAccountSpec{Provider: "aws", AccountID: "fresh-id", Metadata: map[string]string{"team": "sre"}}}
+	policy := &v1alpha1.NotificationPolicy{ObjectMeta: metav1.ObjectMeta{Name: "teams", Namespace: "costs"}, Spec: v1alpha1.NotificationPolicySpec{Type: "teams", Events: []string{"BudgetThreshold"}, CredentialRef: corev1.LocalObjectReference{Name: "hook"}}}
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "hook", Namespace: "costs"}, Data: map[string][]byte{"TEAMS_WEBHOOK_URL": []byte("https://teams.example.test/hook")}}
+	scheme := runtime.NewScheme()
+	if err := v1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	kube := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(budget, staleAccount, freshAccount).WithObjects(budget, staleAccount, freshAccount, policy, secret).Build()
+	base := storage.CollectionRun{WindowStart: now.AddDate(0, 0, -8), WindowEnd: now, StartedAt: now.Add(-time.Hour), CompletedAt: now, DataIngestedAt: now, RecordCount: 8}
+	staleRun := base
+	staleRun.Provider, staleRun.BillingAccountID, staleRun.LatestUsageEnd = "aws", "stale-id", now.Add(-48*time.Hour)
+	freshRun := base
+	freshRun.Provider, freshRun.BillingAccountID, freshRun.LatestUsageEnd = "aws", "fresh-id", now
+	reader := &runtimeFreshnessReader{analyzerTestReader: &analyzerTestReader{records: []normalize.CostRecord{{Provider: "aws", BillingAccountID: "fresh-id", Amount: "80", Currency: "USD", UsageStart: now.Add(-time.Hour)}}}, runs: []storage.CollectionRun{staleRun, freshRun}}
+	factory := func(string) (notifier.Notifier, error) { return &notifier.FakeNotifier{}, nil }
+	intents, err := RunBudgetPolicy(context.Background(), kube, reader, "costs", "monthly", factory, now)
+	if err != nil {
+		t.Fatalf("RunBudgetPolicy() error = %v", err)
+	}
+	if len(intents) != 1 || len(reader.accounts) != 1 || reader.accounts[0].BillingAccountID != "fresh-id" {
+		t.Fatalf("intents = %#v, budget scopes = %#v; want one threshold based only on fresh account", intents, reader.accounts)
+	}
+	var gotStale v1alpha1.CloudAccount
+	if err := kube.Get(context.Background(), types.NamespacedName{Namespace: "costs", Name: "stale"}, &gotStale); err != nil {
+		t.Fatal(err)
+	}
+	condition := apiMeta.FindStatusCondition(gotStale.Status.Conditions, "DataFresh")
+	if condition == nil || condition.Status != metav1.ConditionFalse || condition.Reason != "ProviderDataBeyondExpectedDelay" {
+		t.Fatalf("DataFresh condition = %#v, want stale status", condition)
 	}
 }
 

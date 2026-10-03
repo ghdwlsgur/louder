@@ -12,6 +12,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/ghdwlsgur/louder/internal/normalize"
 	"github.com/ghdwlsgur/louder/internal/provider"
+	"github.com/ghdwlsgur/louder/internal/storage"
 )
 
 var ErrInvalidConfiguration = errors.New("invalid clickhouse configuration")
@@ -100,6 +101,65 @@ func (c *nativeInserter) InsertBatch(ctx context.Context, records []normalize.Co
 		}
 	}
 	return batch.Send()
+}
+
+func (c *nativeInserter) InsertCollectionRun(ctx context.Context, run storage.CollectionRun) error {
+	latestUsageEnd := run.LatestUsageEnd.UTC()
+	hasLatestUsageEnd := uint8(1)
+	if latestUsageEnd.IsZero() {
+		latestUsageEnd = time.Unix(0, 0).UTC()
+		hasLatestUsageEnd = 0
+	}
+	batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO collection_runs (provider, billing_account_id, window_start, window_end, started_at, completed_at, data_ingested_at, record_count, has_latest_usage_end, latest_usage_end, version)")
+	if err != nil {
+		return err
+	}
+	defer batch.Close()
+	if err := batch.Append(run.Provider, run.BillingAccountID, run.WindowStart.UTC(), run.WindowEnd.UTC(), run.StartedAt.UTC(), run.CompletedAt.UTC(), run.DataIngestedAt.UTC(), run.RecordCount, hasLatestUsageEnd, latestUsageEnd, uint64(run.CompletedAt.UTC().UnixNano())); err != nil {
+		return err
+	}
+	return batch.Send()
+}
+
+func (c *nativeInserter) ReadCollectionRuns(ctx context.Context, accounts []AccountScope, start, end time.Time) ([]storage.CollectionRun, error) {
+	accountTuples := make([]string, len(accounts))
+	args := make([]any, 0, 2+2*len(accounts))
+	args = append(args, end.UTC(), start.UTC())
+	for i, account := range accounts {
+		accountTuples[i] = "(?, ?)"
+		args = append(args, account.Provider, account.BillingAccountID)
+	}
+	query := `SELECT provider, billing_account_id, window_start, window_end, started_at, completed_at, data_ingested_at, record_count, has_latest_usage_end, latest_usage_end
+FROM collection_runs FINAL
+WHERE window_start < ? AND window_end > ?
+AND (provider, billing_account_id) IN (` + strings.Join(accountTuples, ", ") + ")"
+	rows, err := c.conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	runs := make([]storage.CollectionRun, 0)
+	for rows.Next() {
+		var run storage.CollectionRun
+		var hasLatestUsageEnd uint8
+		if err := rows.Scan(&run.Provider, &run.BillingAccountID, &run.WindowStart, &run.WindowEnd, &run.StartedAt, &run.CompletedAt, &run.DataIngestedAt, &run.RecordCount, &hasLatestUsageEnd, &run.LatestUsageEnd); err != nil {
+			return nil, err
+		}
+		if hasLatestUsageEnd == 0 {
+			run.LatestUsageEnd = time.Time{}
+		}
+		run.WindowStart = run.WindowStart.UTC()
+		run.WindowEnd = run.WindowEnd.UTC()
+		run.StartedAt = run.StartedAt.UTC()
+		run.CompletedAt = run.CompletedAt.UTC()
+		run.DataIngestedAt = run.DataIngestedAt.UTC()
+		run.LatestUsageEnd = run.LatestUsageEnd.UTC()
+		runs = append(runs, run)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return runs, nil
 }
 
 func (c *nativeInserter) ReadCosts(ctx context.Context, accounts []AccountScope, start, end time.Time) ([]normalize.CostRecord, error) {

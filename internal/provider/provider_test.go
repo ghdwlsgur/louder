@@ -111,3 +111,21 @@ func TestProvidesDailyCostRecords(t *testing.T) {
 		})
 	}
 }
+
+func TestExpectedDailyCostDataDelay(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		delay time.Duration
+		known bool
+	}{
+		{"aws", 24 * time.Hour, true}, {"gcp", 24 * time.Hour, true}, {"azure", 72 * time.Hour, true},
+		{"alibaba", 24 * time.Hour, true}, {"oci", 0, false}, {"ibm", 0, false}, {"ncp", 0, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, known := ExpectedDailyCostDataDelay(test.name)
+			if got != test.delay || known != test.known {
+				t.Fatalf("ExpectedDailyCostDataDelay(%q) = (%s, %t), want (%s, %t)", test.name, got, known, test.delay, test.known)
+			}
+		})
+	}
+}

@@ -3,6 +3,8 @@ package analyzer
 import (
 	"context"
 	"errors"
+	"fmt"
+	"reflect"
 	"sort"
 	"time"
 
@@ -11,6 +13,8 @@ import (
 	"github.com/ghdwlsgur/louder/internal/storage"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apiMeta "k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -35,16 +39,43 @@ func RunBudgetPolicy(ctx context.Context, kube client.Client, reader storage.Cos
 	if err := kube.List(ctx, &accounts, client.InNamespace(namespace)); err != nil {
 		return nil, err
 	}
+	analysisAccounts := accounts.Items
+	var runErrors []error
+	if runReader, ok := reader.(storage.CollectionRunReader); ok {
+		scopes := make([]storage.AccountScope, 0, len(accounts.Items))
+		for _, account := range accounts.Items {
+			if account.Spec.AccountID != "" && matchesSelector(account.Spec.Metadata, budget.Spec.Selector) {
+				scopes = append(scopes, storage.AccountScope{Provider: account.Spec.Provider, BillingAccountID: account.Spec.AccountID})
+			}
+		}
+		if len(scopes) > 0 {
+			utcNow := now.UTC()
+			from := time.Date(utcNow.Year(), utcNow.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, -7)
+			runs, readErr := runReader.ReadCollectionRuns(ctx, scopes, from, utcNow)
+			if readErr != nil {
+				runErrors = append(runErrors, fmt.Errorf("read collection freshness metadata: %w", readErr))
+			} else {
+				analysisAccounts = excludeStaleAccounts(accounts.Items, runs, now)
+				for i := range accounts.Items {
+					account := &accounts.Items[i]
+					if !matchesSelector(account.Spec.Metadata, budget.Spec.Selector) || account.Spec.AccountID == "" {
+						continue
+					}
+					assessment := assessDataFreshness(account.Spec.Provider, runsForAccount(runs, account.Spec.Provider, account.Spec.AccountID), now)
+					updateCloudAccountFreshnessStatus(ctx, kube, account, assessment, now, &runErrors)
+				}
+			}
+		}
+	}
 	var policies v1alpha1.NotificationPolicyList
 	if err := kube.List(ctx, &policies, client.InNamespace(namespace)); err != nil {
 		return nil, err
 	}
-	intents, err := EvaluateStoredBudget(ctx, reader, budget, accounts.Items, now)
+	intents, err := EvaluateStoredBudget(ctx, reader, budget, analysisAccounts, now)
 	if err != nil {
 		return nil, err
 	}
 	month := now.UTC().Format("2006-01")
-	var runErrors []error
 	intents = pendingBudgetThresholds(intents, budget.Status, month)
 	resolve := func(ctx context.Context, policy v1alpha1.NotificationPolicy) (notifier.Notifier, error) {
 		if newTeamsNotifier == nil {
@@ -61,7 +92,7 @@ func RunBudgetPolicy(ctx context.Context, kube client.Client, reader storage.Cos
 		return newTeamsNotifier(string(endpoint))
 	}
 	if len(intents) > 0 {
-		if err := NotifyBudgetIntents(ctx, budget, intents, accounts.Items, policies.Items, resolve); err != nil {
+		if err := NotifyBudgetIntents(ctx, budget, intents, analysisAccounts, policies.Items, resolve); err != nil {
 			runErrors = append(runErrors, err)
 		} else {
 			notified := append([]int32(nil), intentsToPercentages(intents)...)
@@ -76,11 +107,11 @@ func RunBudgetPolicy(ctx context.Context, kube client.Client, reader storage.Cos
 			}
 		}
 	}
-	forecastIntent, err := EvaluateStoredBudgetForecast(ctx, reader, budget, accounts.Items, now)
+	forecastIntent, err := EvaluateStoredBudgetForecast(ctx, reader, budget, analysisAccounts, now)
 	if err != nil {
 		runErrors = append(runErrors, err)
 	} else if forecastIntent != nil && budget.Status.LastNotifiedForecastMonth != month {
-		if err := NotifyBudgetForecastIntent(ctx, budget, *forecastIntent, accounts.Items, policies.Items, resolve); err != nil {
+		if err := NotifyBudgetForecastIntent(ctx, budget, *forecastIntent, analysisAccounts, policies.Items, resolve); err != nil {
 			runErrors = append(runErrors, err)
 		} else {
 			budget.Status.LastNotifiedForecastMonth = month
@@ -89,11 +120,11 @@ func RunBudgetPolicy(ctx context.Context, kube client.Client, reader storage.Cos
 			}
 		}
 	}
-	anomalyIntents, err := EvaluateStoredDailyCostAnomalies(ctx, reader, budget, accounts.Items, now)
+	anomalyIntents, err := EvaluateStoredDailyCostAnomalies(ctx, reader, budget, analysisAccounts, now)
 	if err != nil {
 		runErrors = append(runErrors, err)
 	} else if len(anomalyIntents) > 0 {
-		receipts, notifyErr := NotifyDailyAnomalyIntentsWithReceipts(ctx, budget, anomalyIntents, accounts.Items, policies.Items, resolve, budget.Status.NotifiedDailyAnomalies)
+		receipts, notifyErr := NotifyDailyAnomalyIntentsWithReceipts(ctx, budget, anomalyIntents, analysisAccounts, policies.Items, resolve, budget.Status.NotifiedDailyAnomalies)
 		if len(receipts) > 0 {
 			anomalyDate := anomalyIntents[0].Date.UTC().Format("2006-01-02")
 			budget.Status.NotifiedDailyAnomalies = mergeDailyAnomalyReceipts(budget.Status.NotifiedDailyAnomalies, receipts, anomalyDate)
@@ -169,4 +200,40 @@ func compactThresholds(sorted []int32) []int32 {
 		}
 	}
 	return compacted
+}
+
+func runsForAccount(runs []storage.CollectionRun, providerName, accountID string) []storage.CollectionRun {
+	matched := make([]storage.CollectionRun, 0)
+	for _, run := range runs {
+		if run.Provider == providerName && run.BillingAccountID == accountID {
+			matched = append(matched, run)
+		}
+	}
+	return matched
+}
+
+func updateCloudAccountFreshnessStatus(ctx context.Context, kube client.Client, account *v1alpha1.CloudAccount, assessment dataFreshnessAssessment, now time.Time, errs *[]error) {
+	previous := account.DeepCopy().Status
+	if assessment.run != nil {
+		run := assessment.run
+		account.Status.LastSuccessfulCollectionWindow = &v1alpha1.CollectionWindow{Start: metav1.NewTime(run.WindowStart), End: metav1.NewTime(run.WindowEnd)}
+		if !run.LatestUsageEnd.IsZero() {
+			observed := metav1.NewTime(run.LatestUsageEnd)
+			account.Status.LastObservedUsagePeriodEnd = &observed
+		}
+		if !run.DataIngestedAt.IsZero() {
+			ingested := metav1.NewTime(run.DataIngestedAt)
+			account.Status.LastCostDataIngestedAt = &ingested
+		}
+	}
+	apiMeta.SetStatusCondition(&account.Status.Conditions, metav1.Condition{
+		Type: "DataFresh", Status: freshnessConditionStatus(assessment.state), Reason: assessment.reason,
+		Message: assessment.reason, ObservedGeneration: account.Generation, LastTransitionTime: metav1.NewTime(now.UTC()),
+	})
+	if reflect.DeepEqual(previous, account.Status) {
+		return
+	}
+	if err := kube.Status().Update(ctx, account); err != nil {
+		*errs = append(*errs, fmt.Errorf("update CloudAccount %s/%s freshness status: %w", account.Namespace, account.Name, err))
+	}
 }

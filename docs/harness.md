@@ -485,6 +485,8 @@ status:
 
 Collection success and data freshness must not be conflated.
 
+The Collector persists a collection-run record with the exact request window, completion time, row count, latest returned usage-period end, and storage ingestion time. CloudAccount status reports the request window and observed timestamps separately, plus a `DataFresh` condition with `Fresh`, `Stale`, or `Unknown` semantics. Freshness is assessed from the billing usage period against an expected provider delay; it is never inferred from Job completion or database ingestion. Proven stale accounts are excluded from Analyzer inputs without blocking other accounts. Unknown accounts remain best-effort inputs, and unsupported provider delay bounds remain visible as `Unknown`.
+
 ---
 
 ## 12. CI quality gates

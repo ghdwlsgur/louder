@@ -169,7 +169,7 @@ func TestEvaluateStoredDailyCostAnomaliesIgnoresMonthlyOnlyAccountFreshness(t *t
 	}
 }
 
-func TestEvaluateStoredDailyCostAnomaliesRejectsStaleCollection(t *testing.T) {
+func TestEvaluateStoredDailyCostAnomaliesDoesNotUseJobTimeAsDataFreshness(t *testing.T) {
 	now := time.Date(2026, time.October, 2, 12, 0, 0, 0, time.UTC)
 	policy := v1alpha1.BudgetPolicy{Spec: v1alpha1.BudgetPolicySpec{
 		Amount:       v1alpha1.BudgetAmount{Value: 1000, Currency: "USD"},
@@ -182,11 +182,11 @@ func TestEvaluateStoredDailyCostAnomaliesRejectsStaleCollection(t *testing.T) {
 	reader := &analyzerTestReader{}
 
 	_, err := EvaluateStoredDailyCostAnomalies(context.Background(), reader, policy, []v1alpha1.CloudAccount{account}, now)
-	if !errors.Is(err, ErrDailyAnomalySourceStale) {
-		t.Fatalf("EvaluateStoredDailyCostAnomalies() error = %v, want stale-source error", err)
+	if err != nil {
+		t.Fatalf("EvaluateStoredDailyCostAnomalies() error = %v, want best-effort analysis without usage-period metadata", err)
 	}
-	if reader.calls != 0 {
-		t.Errorf("ReadCosts() calls = %d, want no read before collection freshness is established", reader.calls)
+	if reader.calls != 1 {
+		t.Errorf("ReadCosts() calls = %d, want analysis read despite an old Job completion time", reader.calls)
 	}
 }
 

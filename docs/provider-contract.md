@@ -297,6 +297,10 @@ DataFresh=False
 
 Do not infer freshness solely from collector execution time.
 
+The Collector records its exact half-open request window, completion time, normalized row count, latest returned usage-period end, and storage ingestion time as separate values. CloudAccount status exposes the request window, latest observed usage-period end, ingestion time, and a `DataFresh` condition. `Fresh` means the latest observed usage period is within a documented expected provider delay; it is an operational signal, not a guarantee that the provider has finalized billing. `Stale` means that period exceeds the expected delay. `Unknown` means the provider has no documented expected delay or the run did not return usable usage-period evidence. Job completion and ingestion timestamps never substitute for billing-period freshness. The Analyzer excludes proven stale accounts from its analysis while preserving best-effort analysis for unknown accounts.
+
+The expected delays currently used for this signal are 24 hours for AWS, GCP, and Alibaba Cloud, and 72 hours for Azure. OCI, IBM Cloud, and NCP remain `Unknown` because this repository does not establish a documented comparable upper bound. These expected delays do not imply provider guarantees.
+
 ---
 
 ## 13. Provider metadata
